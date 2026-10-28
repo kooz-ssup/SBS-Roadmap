@@ -215,6 +215,18 @@ table.days{border-collapse:collapse;width:100%;font-size:14px}
 .sum h3{margin:0 0 4px;font-size:14px;font-weight:800;color:var(--rose-d)}
 .sum p{margin:0;white-space:pre-line;max-width:80ch}
 .sum textarea{min-height:80px}
+.goal{display:flex;gap:14px;align-items:center;margin:0;padding:14px 24px;background:linear-gradient(100deg,#fff4f6,#fff 60%);border-bottom:1px solid var(--blush)}
+.goal-ic{font-size:30px;line-height:1}
+.goal > div{flex:1;min-width:0}
+.goal b{display:block;font-size:13px;color:var(--rose-d);font-weight:800;margin-bottom:2px}
+.goal p{margin:0;font-size:19px;font-weight:700;white-space:pre-line;color:#2a2330}
+.goal textarea{width:100%;font-size:18px;font-weight:700;border:1px dashed var(--blush);border-radius:8px;background:rgba(255,255,255,.7);padding:6px 10px;resize:vertical;color:#2a2330}
+.goal textarea:focus{outline:none;border-color:var(--rose);border-style:solid;background:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .goal{background:linear-gradient(100deg,#3a1d27,var(--paper) 60%)}:root:not([data-theme="light"]) .goal p,:root:not([data-theme="light"]) .goal textarea{color:var(--ink)}:root:not([data-theme="light"]) .goal textarea{background:var(--field)}}
+.subj.locked{cursor:not-allowed}
+.subj.locked:hover{background:none}
+.mentor .mine{font-size:12px;font-weight:600;color:var(--muted)}
+.mentor.empty-m{background:var(--field);border-style:dashed;border-color:var(--line)}
 .shared{margin:8px 0 0;font-size:13px;color:var(--muted)}
 .simgs{display:grid;gap:16px}
 .simg{margin:0;position:relative}
@@ -270,7 +282,7 @@ body.pm .blocks{grid-template-columns:repeat(2,minmax(0,1fr))}
 body.pm .course{padding:7px 0 5px}
 body.pm .track{row-gap:6px}
 body.pm .subj{padding-top:15px;padding-bottom:3px}
-body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,body.pm .addrow,body.pm .add-course,body.pm .subj.add,body.pm .cctrl{display:none!important}
+body.pm .goal.empty-goal,body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,body.pm .addrow,body.pm .add-course,body.pm .subj.add,body.pm .cctrl{display:none!important}
 .emojis button{width:34px;height:34px;border:1px solid var(--line);border-radius:8px;background:var(--paper);font-size:18px;padding:0}
 .modal p.msg{margin:0;white-space:pre-line}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;font-weight:700;font-size:13px;z-index:60;max-width:90vw}
@@ -310,6 +322,8 @@ body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,body.pm .addrow,body.pm .
   .sc{zoom:var(--scz,.8);margin:var(--scmt,0px) auto 0!important}
   body[data-print="page"] main > .sheet{margin:0 auto!important}
   .simg{break-inside:avoid}
+  .goal.empty-goal{display:none!important}
+  .goal textarea{border:0!important;background:transparent!important;resize:none}
   .mentor{break-inside:avoid}
   .rm + .sc{break-before:page}
   .rm,.sc{break-inside:avoid}
@@ -543,7 +557,7 @@ const Store = {
 /* canEdit: 수강생 체크·일정 입력 가능 (직원 이상) / canAdmin: 로드맵·커리큘럼·학사일정 수정 가능 (관리자) */
 const canEdit = () => Store.local ? !Store.failed : Store.staff;
 const canAdmin = () => Store.local ? !Store.failed : (Store.staff && Store.admin);
-const STUDENT_KEYS = new Set(["sname", "cell"]);
+const STUDENT_KEYS = new Set(["sname", "cell", "goal", "mymentor"]);
 
 const pending = {}, timers = {}, busy = {};
 let saveState = "idle";
@@ -773,7 +787,7 @@ function roadmapHTML() {
     + (!R.courses.length && !edit ? `<div class="empty" style="grid-column:1/-1"><p>과정이 없어요. 상단 [편집]에서 과정을 추가하세요.</p></div>` : "");
   const foot = edit ? `<div class="rm-foot"><button class="btn sm danger" data-act="resetRoadmap">기본 로드맵으로 되돌리기</button></div>` : "";
   const headBlock = useImg ? `<div class="rm-headimg"><img src="${HEADER_IMG}" alt="CURRICULUM ROAD MAP, 실무 맞춤형 교육과정, 기초부터 취업까지!"></div>` : `<div class="rm-head">${head}</div>`;
-  return `<section class="sheet rm mode-${S.mode}${S.focus && any && S.mode !== "edit" ? " focus" : ""}">${imgToggle}${headBlock}<div class="rm-body">${body}</div>${foot}</section>`;
+  return `<section class="sheet rm mode-${S.mode}${S.focus && any && S.mode !== "edit" ? " focus" : ""}">${imgToggle}${goalHTML()}${headBlock}<div class="rm-body">${body}</div>${foot}</section>`;
 }
 
 function courseHTML(c, ci, sel, edit) {
@@ -788,7 +802,8 @@ function courseHTML(c, ci, sel, edit) {
     if (s.br && i > 0) items += `<span class="brk"></span><span class="indent" aria-hidden="true"></span>`;
     const t = n > 1 ? i / (n - 1) : 1;
     const label = [s.name, s.level].filter(Boolean).join(" ").replace(/\n/g, " ");
-    items += `<button type="button" class="subj${on ? " sel" : ""}${jl ? " jl" : ""}${jr ? " jr" : ""}" data-act="subj" data-c="${esc(c.id)}" data-s="${esc(s.id)}" style="--bar:${mixColor(t)}" aria-pressed="${sel.has(s.id)}" aria-label="${esc(label)}">`
+    const locked = S.studentView && !on;
+    items += `<button type="button" class="subj${on ? " sel" : ""}${jl ? " jl" : ""}${jr ? " jr" : ""}${locked ? " locked" : ""}"${locked ? ' aria-disabled="true"' : ""} data-act="subj" data-c="${esc(c.id)}" data-s="${esc(s.id)}" style="--bar:${mixColor(t)}" aria-pressed="${sel.has(s.id)}" aria-label="${esc(label)}">`
       + `<span class="bar"></span><span class="nm">${esc(s.name)}</span>`
       + (s.level ? `<span class="lv">${esc(s.level)}</span>` : "")
       + (s.note ? `<span class="nt">${esc(s.note)}</span>` : "")
@@ -927,8 +942,13 @@ function subjectHTML() {
   if (cur === undefined) { loadCurr(s); return `<section class="sheet"><div class="loading">커리큘럼 불러오는 중…</div></section>`; }
   const tab = S.tab || cur.mode || "daily";
   const ed = S.subjEdit && canAdmin();
-  const idx = c.subjects.indexOf(s);
-  const prev = c.subjects[idx - 1], next = c.subjects[idx + 1];
+  const selNow = selSet();
+  const navList = S.studentView ? c.subjects.filter(x => selNow.has(x.id)) : c.subjects;
+  const idx = navList.indexOf(s);
+  const prev = idx >= 0 ? navList[idx - 1] : null, next = idx >= 0 ? navList[idx + 1] : null;
+  if (S.studentView && !selNow.has(s.id)) {
+    return `<section class="sheet"><div class="empty"><p>등록한 과목의 커리큘럼만 볼 수 있어요.</p><div class="btns"><button class="btn pri" data-act="home">로드맵으로 돌아가기</button></div></div></section>`;
+  }
   const nm = x => esc([x.name, x.level].filter(Boolean).join(" ").replace(/\n/g, " "));
   const editBtn = label => canAdmin() ? `<div class="btns"><button class="btn rose" data-act="subjEdit">✏️ ${label}</button></div>` : "";
 
@@ -970,15 +990,7 @@ function subjectHTML() {
     }
   }
 
-  /* 멘토 한마디 */
-  const mfilled = MENTORF.filter(([k]) => (cur.mentor[k] || "").trim());
-  let mentor = "";
-  if (ed) {
-    mentor = `<section class="mentor"><h3>💬 멘토 한마디</h3><p class="help">비워 둔 항목은 보이지 않아요.</p>
-      ${MENTORF.map(([k, l, ph]) => `<div class="mrow"><h4>${l}</h4><textarea data-k="mentor" data-f="${k}" placeholder="${esc(ph)}" aria-label="${l}">${esc(cur.mentor[k] || "")}</textarea></div>`).join("")}</section>`;
-  } else if (mfilled.length) {
-    mentor = `<section class="mentor"><h3>💬 멘토 한마디</h3>${mfilled.map(([k, l]) => `<div class="mrow"><h4>${l}</h4><p>${linkify(cur.mentor[k])}</p></div>`).join("")}</section>`;
-  }
+  const mentor = mentorHTML(s);
 
   const shared = sameSubjects(s);
   const sharedNote = ed && shared.length > 1
@@ -1001,6 +1013,70 @@ function subjectHTML() {
       ${next ? `<button class="btn" data-act="goSubj" data-c="${esc(c.id)}" data-s="${esc(next.id)}">${nm(next)} →</button>` : "<span></span>"}
     </div>
   </section>`;
+}
+
+
+/* ---------- 학생 목표 ---------- */
+function goalHTML() {
+  const st = S.cur;
+  if (!st) return "";
+  const g = st.goal || "";
+  if (!canEdit()) {
+    if (!g.trim()) return "";
+    return `<div class="goal"><span class="goal-ic" aria-hidden="true">🎯</span><div><b>${esc(st.name || "")}${st.name ? " 님의 " : ""}목표</b><p>${esc(g)}</p></div></div>`;
+  }
+  return `<div class="goal${g.trim() ? "" : " empty-goal"}"><span class="goal-ic" aria-hidden="true">🎯</span><div><b>${esc(st.name || "수강생")} 님의 목표</b>
+    <textarea data-k="goal" rows="2" placeholder="예: 11월까지 시각편집과정 7과목 이수 / 편집디자이너 취업하자! 할 수 있다!" aria-label="수강생 목표">${esc(g)}</textarea></div></div>`;
+}
+
+/* ---------- 멘토 한마디 (직원마다 따로) ---------- */
+S.mentor = {};
+S.mentorEdit = false;
+function mentorId(s, email) { return subjKey(s) + "__" + email; }
+function mentorOwnerFor() {
+  /* 학생용 링크: 그 학생 담당 직원의 한마디 / 직원·관리자: 본인 한마디 */
+  if (S.studentView) return S.cur?.owner || "";
+  if (Store.local) return "local";
+  return Store.staff ? myEmail() : "";
+}
+async function loadMentor(s, email) {
+  const id = mentorId(s, email);
+  if (S.mentor[id] !== undefined || loadMentor.busy === id) return;
+  loadMentor.busy = id;
+  let d = await Store.get("mentors/" + id);
+  /* 예전에 관리자가 커리큘럼에 함께 적어 둔 한마디는 관리자 본인 것으로 이어서 사용 */
+  if (!d && Store.admin && email === myEmail()) { const cur = S.curr[subjKey(s)]; if (cur && cur.mentor && Object.values(cur.mentor).some(v => (v || "").trim())) d = clone(cur.mentor); }
+  loadMentor.busy = null;
+  S.mentor[id] = d || {};
+  if (S.page.name === "subject" && pageSubject() === s) render();
+}
+function saveMentor(s) {
+  const email = myEmail() || "local";
+  const id = mentorId(s, email);
+  const m = S.mentor[id] || {};
+  const data = { key: subjKey(s), owner: email, ownerName: Store.user?.displayName || "", lecture: m.lecture || "", review: m.review || "", tip: m.tip || "", updatedAt: Date.now() };
+  save("mentors/" + id, data);
+}
+function mentorHTML(s) {
+  const email = mentorOwnerFor();
+  if (!email) return "";
+  const id = mentorId(s, email);
+  if (S.mentor[id] === undefined) { loadMentor(s, email); return ""; }
+  const m = S.mentor[id];
+  const mine = !S.studentView && canEdit();
+  const filled = MENTORF.filter(([k]) => (m[k] || "").trim());
+  const who = S.studentView ? (S.cur?.ownerName ? `${esc(S.cur.ownerName)} 멘토의 ` : "") : "";
+  if (mine && S.mentorEdit) {
+    return `<section class="mentor"><h3>💬 내 멘토 한마디</h3><p class="help">내가 담당하는 수강생에게만 보여요. 비워 둔 항목은 보이지 않아요.</p>
+      ${MENTORF.map(([k, l, ph]) => `<div class="mrow"><h4>${l}</h4><textarea data-k="mymentor" data-f="${k}" placeholder="${esc(ph)}" aria-label="${l}">${esc(m[k] || "")}</textarea></div>`).join("")}
+      <div class="row-btns no-print"><button class="btn rose" data-act="mentorEdit">✓ 작성 완료</button></div></section>`;
+  }
+  if (!filled.length) {
+    return mine ? `<section class="mentor empty-m no-print"><h3>💬 내 멘토 한마디</h3><p class="help">이 과목에 대해 담당 수강생에게 전할 추천 강의, 복습 방법, 수업 팁을 적어 보세요.</p><div class="row-btns"><button class="btn rose" data-act="mentorEdit">✏️ 멘토 한마디 쓰기</button></div></section>` : "";
+  }
+  return `<section class="mentor"><h3>💬 ${who ? who + "한마디" : "멘토 한마디"}${mine ? ' <span class="mine no-print">(내 수강생에게 보이는 내용)</span>' : ""}</h3>
+    ${filled.map(([k, l]) => `<div class="mrow"><h4>${l}</h4><p>${linkify(m[k])}</p></div>`).join("")}
+    ${mine ? `<div class="row-btns no-print"><button class="btn sm" data-act="mentorEdit">✏️ 멘토 한마디 수정</button></div>` : ""}</section>`;
 }
 
 /* 이미지를 줄여서(1MB 이하) 보관 */
@@ -1205,7 +1281,7 @@ function delCourse(c) {
 /* ================= 이동 ================= */
 function go(page) {
   S.stack.push({ page: S.page, y: window.scrollY, mode: S.mode });
-  S.page = page; S.subjEdit = false; S.tab = null;
+  S.page = page; S.subjEdit = false; S.tab = null; S.mentorEdit = false;
   render(); window.scrollTo(0, 0);
 }
 function back() {
@@ -1247,6 +1323,7 @@ const ACT = {
       if (on) st.checked[s.id] = true; else delete st.checked[s.id];
       patchStudent({ checked: { [s.id]: on ? true : DEL } }); render();
     } else if (S.mode === "edit") editSubject(c, s);
+    else if (S.studentView && !selSet().has(s.id)) toast("등록한 과목의 커리큘럼만 볼 수 있어요");
     else go({ name: "subject", cid: c.id, sid: s.id });
   },
   course(el) {
@@ -1352,6 +1429,7 @@ const ACT = {
     render();
   },
   dayAdd() { const cur = curOf(); cur.days.push({ id: uid("d"), title: "", content: "", note: "" }); saveCur(); render(); focusLastDay(); },
+  mentorEdit() { if (!canEdit()) return; S.mentorEdit = !S.mentorEdit; render(); },
   imgMove(el) {
     const cur = curOf(), L = cur.summaryImgs, i = +el.dataset.i, j = i + (+el.dataset.d);
     if (j < 0 || j >= L.length) return;
@@ -1457,7 +1535,17 @@ const IN = {
   rmtag(el) { S.roadmap.tags[+el.dataset.i] = el.value; saveRoadmap(); },
   day(el) { const cur = curOf(); const d = cur?.days[+el.dataset.i]; if (d) { d[el.dataset.f] = el.value; saveCur(); } },
   sum(el) { const cur = curOf(); if (cur) { cur.summary[el.dataset.f] = el.value; saveCur(); } },
-  mentor(el) { const cur = curOf(); if (cur) { cur.mentor[el.dataset.f] = el.value; saveCur(); } }
+  goal(el) {
+    const st = ensureStudent(); st.goal = el.value; patchStudent({ goal: el.value });
+    el.closest(".goal")?.classList.toggle("empty-goal", !el.value.trim());
+  },
+  mymentor(el) {
+    const s = pageSubject(); if (!s || !Store.user && !Store.local) return;
+    const id = mentorId(s, myEmail() || "local");
+    const m = S.mentor[id] || (S.mentor[id] = {});
+    m[el.dataset.f] = el.value;
+    saveMentor(s);
+  }
 };
 document.addEventListener("input", e => {
   const k = e.target.dataset?.k;
@@ -1597,7 +1685,7 @@ async function loadAll() {
   if (LINK_ID && !S.cur && Store.admin) { const st = S.students.find(s => s.id === LINK_ID); if (st) { S.showAll = true; S.cur = st; } }
 }
 async function onAuthChange() {
-  S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {};
+  S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {}; S.mentor = {}; S.mentorEdit = false;
   $("#app").innerHTML = `<div class="loading">불러오는 중…</div>`;
   await loadAll();
   render();
