@@ -518,6 +518,7 @@ const Store = {
       const s = await this.m.getDoc(this.m.doc(this.fs, "admins", u.email));
       if (!s.exists()) return false;
       this.admin = String((s.data() || {}).role || "").trim().toLowerCase() === "admin";
+      this.phone4 = String((s.data() || {}).phone4 || "").replace(/\D/g, "").slice(-4);
       return true;
     } catch (e) { return false; }
   },
@@ -652,10 +653,10 @@ const S = {
 };
 const saveRoadmap = () => save("app/roadmap", S.roadmap);
 const saveSchedule = () => save("app/schedule", S.schedule);
-function newStudent(name) {
+function newStudent(name, phone4) {
   return {
-    id: secureId(), name: name || "", checked: {}, cells: {},
-    owner: Store.user?.email || "", ownerName: Store.user?.displayName || Store.user?.email || "",
+    id: secureId(), name: name || "", phone4: phone4 || "", checked: {}, cells: {},
+    owner: Store.user?.email || "", ownerName: Store.user?.displayName || Store.user?.email || "", ownerPhone4: Store.phone4 || "",
     createdAt: Date.now(), updatedAt: Date.now()
   };
 }
@@ -735,11 +736,12 @@ function renderBar() {
   }
   if (S.page.name === "home") {
     const showOwner = Store.admin && S.showAll;
-    const opts = visibleStudents().map(s => `<option value="${esc(s.id)}"${S.cur && s.id === S.cur.id ? " selected" : ""}>${esc(s.name || "(이름 없음)")}${showOwner ? esc(` (${isMine(s) ? "나" : (s.ownerName || "담당자 없음")})`) : ""}</option>`).join("");
+    const opts = visibleStudents().map(s => `<option value="${esc(s.id)}"${S.cur && s.id === S.cur.id ? " selected" : ""}>${esc(stuLabel(s, showOwner))}</option>`).join("");
     const scope = !Store.local && Store.admin ? `<select id="scopeSel" class="scope" aria-label="수강생 보기 범위"><option value="mine"${S.showAll ? "" : " selected"}>내 수강생</option><option value="all"${S.showAll ? " selected" : ""}>전체 직원</option></select>` : "";
     ctx.innerHTML = `
       <label class="stu">수강생 ${scope}<select id="stuSel" aria-label="수강생 선택">${opts || '<option value="">(없음)</option>'}</select></label>
       <button class="btn sm" data-act="newStudent">+ 새 수강생</button>
+      <button class="btn sm" data-act="editStudent"${S.cur ? "" : " disabled"} title="이름·휴대폰 뒷번호 수정">정보 수정</button>
       <button class="btn sm danger" data-act="delStudent"${S.cur ? "" : " disabled"}>삭제</button>
       ${Store.local ? "" : `<button class="btn sm" data-act="shareLink"${S.cur ? "" : " disabled"} title="이 수강생만 볼 수 있는 링크">🔗 학생용 링크</button>`}
       <span class="spacer"></span>
@@ -1015,6 +1017,51 @@ function subjectHTML() {
   </section>`;
 }
 
+
+
+/* ---------- 수강생 이름 표시 (휴대폰 뒷번호 4자리로 구분) ---------- */
+function personLabel(name, p4) { return (name || "(이름 없음)") + (p4 ? `(${p4})` : ""); }
+function stuLabel(s, withOwner) {
+  let t = personLabel(s.name, s.phone4);
+  if (withOwner) t += " — " + (isMine(s) ? "나" : (s.ownerName ? personLabel(s.ownerName, s.ownerPhone4) : "담당자 없음"));
+  return t;
+}
+function studentForm(st) {
+  const isNew = !st;
+  modal({
+    title: isNew ? "새 수강생" : "수강생 정보 수정",
+    body: `<label>수강생 이름<input type="text" id="f-sn" value="${esc(st?.name || "")}" placeholder="예: 홍길동"></label>
+      <label>휴대폰 뒷번호 4자리<input type="text" id="f-p4" value="${esc(st?.phone4 || "")}" inputmode="numeric" maxlength="4" placeholder="예: 1234"><span class="help">이름이 같은 수강생을 구분하는 데 써요. 목록에만 보이고 학생 화면에는 나오지 않아요.</span></label>`,
+    actions: [{ label: "취소" }, {
+      label: isNew ? "만들기" : "저장", cls: "pri", fn: box => {
+        const name = box.querySelector("#f-sn").value.trim();
+        const p4 = box.querySelector("#f-p4").value.trim();
+        if (!name) { toast("수강생 이름을 입력하세요"); return false; }
+        if (p4 && !/^\d{4}$/.test(p4)) { toast("휴대폰 뒷번호는 숫자 4자리로 입력하세요"); return false; }
+        const dup = visibleStudents().find(x => x !== st && (x.name || "").trim() === name && (x.phone4 || "") === p4);
+        const doIt = () => {
+          if (isNew) {
+            const ns = newStudent(name, p4);
+            S.students.unshift(ns); S.cur = ns; createStudent(ns);
+            S.mode = "check"; render(); toast("수강할 과목을 눌러 체크하세요");
+          } else {
+            st.name = name; st.phone4 = p4;
+            patchStudent({ name, phone4: p4 }); render(); toast("수정했어요");
+          }
+        };
+        if (dup) {
+          setTimeout(() => confirmBox("같은 수강생이 있어요", `‘${personLabel(name, p4)}’ 수강생이 이미 목록에 있어요.\n그래도 ${isNew ? "새로 만들까요" : "저장할까요"}?`, isNew ? "새로 만들기" : "저장", doIt), 0);
+          return;
+        }
+        doIt();
+      }
+    }]
+  });
+  setTimeout(() => {
+    ["#f-sn", "#f-p4"].forEach(s => $(s)?.addEventListener("keydown", e => { if (e.key === "Enter") $('[data-mi="1"]')?.click(); }));
+    $("#f-p4")?.addEventListener("input", e => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 4); });
+  }, 30);
+}
 
 /* ---------- 학생 목표 ---------- */
 function goalHTML() {
@@ -1383,19 +1430,8 @@ const ACT = {
     const b = S.schedule.blocks.find(x => x.id === el.dataset.id); if (!b) return;
     confirmBox("학사일정 삭제", `‘${b.label}’ 학사일정을 삭제할까요?`, "삭제", () => { S.schedule.blocks = S.schedule.blocks.filter(x => x !== b); saveSchedule(); render(); });
   },
-  newStudent() {
-    modal({
-      title: "새 수강생", body: `<label>수강생 이름<input type="text" id="f-sn" placeholder="예: 홍길동"></label>`,
-      actions: [{ label: "취소" }, {
-        label: "만들기", cls: "pri", fn: box => {
-          const st = newStudent(box.querySelector("#f-sn").value.trim());
-          S.students.unshift(st); S.cur = st; createStudent(st);
-          S.mode = "check"; render(); toast("수강할 과목을 눌러 체크하세요");
-        }
-      }]
-    });
-    setTimeout(() => { const i = $("#f-sn"); i?.addEventListener("keydown", e => { if (e.key === "Enter") $('[data-mi="1"]')?.click(); }); }, 30);
-  },
+  newStudent() { studentForm(null); },
+  editStudent() { if (S.cur) studentForm(S.cur); },
   delStudent() {
     if (!S.cur) return;
     const st = S.cur;
@@ -1504,7 +1540,7 @@ const IN = {
     if (sel) {
       let o = sel.querySelector(`option[value="${CSS.escape(st.id)}"]`);
       if (!o) { renderBar(); return; }
-      o.textContent = st.name || "(이름 없음)";
+      o.textContent = stuLabel(st, Store.admin && S.showAll);
     }
   },
   cell(el) {
