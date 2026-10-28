@@ -57,6 +57,7 @@ img{max-width:100%}
 .ctx{display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex:1}
 .spacer{flex:1}
 .stu{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px}
+.stu select.scope{max-width:110px}
 .stu select{height:34px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:0 8px;max-width:180px}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--paper)}
 .seg button{border:0;background:none;height:32px;padding:0 12px;font-weight:700;font-size:13px;color:var(--muted)}
@@ -490,7 +491,12 @@ const Store = {
   async listStudents() {
     if (this.local) return lsKeys("students/").map(k => lsGet(k)).filter(Boolean);
     if (!this.staff) return [];
-    try { const q = await this.m.getDocs(this.m.collection(this.fs, "students")); return q.docs.map(d => Object.assign(d.data(), { id: d.id })); }
+    try {
+      const col = this.m.collection(this.fs, "students");
+      /* 관리자는 전체, 직원은 본인이 등록한 수강생만 불러옴 */
+      const q = await this.m.getDocs(this.admin ? col : this.m.query(col, this.m.where("owner", "==", this.user.email)));
+      return q.docs.map(d => Object.assign(d.data(), { id: d.id }));
+    }
     catch (e) { console.error(e); return []; }
   },
   async set(path, data) { await this.m.setDoc(this.ref(path), data); },
@@ -607,10 +613,28 @@ const S = {
 };
 const saveRoadmap = () => save("app/roadmap", S.roadmap);
 const saveSchedule = () => save("app/schedule", S.schedule);
-function newStudent(name) { return { id: secureId(), name: name || "", checked: {}, cells: {}, createdAt: Date.now(), updatedAt: Date.now() }; }
+function newStudent(name) {
+  return {
+    id: secureId(), name: name || "", checked: {}, cells: {},
+    owner: Store.user?.email || "", ownerName: Store.user?.displayName || Store.user?.email || "",
+    createdAt: Date.now(), updatedAt: Date.now()
+  };
+}
 function ensureStudent() {
   if (!S.cur) { S.cur = newStudent(""); S.students.unshift(S.cur); createStudent(S.cur); }
   return S.cur;
+}
+/* 화면에 보이는 수강생: 직원은 본인 것만, 관리자는 [내 수강생/전체] 선택 */
+const myEmail = () => Store.user?.email || "";
+const isMine = s => Store.local || (s.owner || "") === myEmail();
+function visibleStudents() {
+  if (Store.local) return S.students;
+  if (Store.admin && S.showAll) return S.students;
+  return S.students.filter(isMine);
+}
+function pickVisible(preferId) {
+  const vis = visibleStudents();
+  S.cur = vis.find(s => s.id === preferId) || vis.find(s => S.cur && s.id === S.cur.id) || vis[0] || null;
 }
 const findCourse = cid => S.roadmap?.courses.find(c => c.id === cid);
 function selSet() {
@@ -671,9 +695,11 @@ function renderBar() {
     return;
   }
   if (S.page.name === "home") {
-    const opts = S.students.map(s => `<option value="${esc(s.id)}"${S.cur && s.id === S.cur.id ? " selected" : ""}>${esc(s.name || "(이름 없음)")}</option>`).join("");
+    const showOwner = Store.admin && S.showAll;
+    const opts = visibleStudents().map(s => `<option value="${esc(s.id)}"${S.cur && s.id === S.cur.id ? " selected" : ""}>${esc(s.name || "(이름 없음)")}${showOwner ? esc(` (${isMine(s) ? "나" : (s.ownerName || "담당자 없음")})`) : ""}</option>`).join("");
+    const scope = !Store.local && Store.admin ? `<select id="scopeSel" class="scope" aria-label="수강생 보기 범위"><option value="mine"${S.showAll ? "" : " selected"}>내 수강생</option><option value="all"${S.showAll ? " selected" : ""}>전체 직원</option></select>` : "";
     ctx.innerHTML = `
-      <label class="stu">수강생 <select id="stuSel" aria-label="수강생 선택">${opts || '<option value="">(없음)</option>'}</select></label>
+      <label class="stu">수강생 ${scope}<select id="stuSel" aria-label="수강생 선택">${opts || '<option value="">(없음)</option>'}</select></label>
       <button class="btn sm" data-act="newStudent">+ 새 수강생</button>
       <button class="btn sm danger" data-act="delStudent"${S.cur ? "" : " disabled"}>삭제</button>
       ${Store.local ? "" : `<button class="btn sm" data-act="shareLink"${S.cur ? "" : " disabled"} title="이 수강생만 볼 수 있는 링크">🔗 학생용 링크</button>`}
@@ -1057,6 +1083,7 @@ const ACT = {
     if (!s) return;
     if (S.mode === "check") {
       if (S.justDragged) return;
+      if (!S.cur) { ACT.newStudent(); return; }
       const st = ensureStudent();
       st.checked = st.checked || {};
       const on = !st.checked[s.id];
@@ -1069,6 +1096,7 @@ const ACT = {
     const c = findCourse(el.dataset.c);
     if (!c) return;
     if (S.mode === "check") {
+      if (!S.cur) { ACT.newStudent(); return; }
       const st = ensureStudent(); st.checked = st.checked || {};
       const all = c.subjects.length && c.subjects.every(s => st.checked[s.id]);
       const part = {};
@@ -1140,7 +1168,7 @@ const ACT = {
     confirmBox("수강생 삭제", `‘${st.name || "이름 없음"}’ 수강생의 체크와 시간표를 삭제할까요?`, "삭제", () => {
       S.students = S.students.filter(x => x !== st);
       removeDoc("students/" + st.id);
-      S.cur = S.students[0] || null;
+      S.cur = null; pickVisible(null);
       if (S.cur) lsSet("pref:student", S.cur.id);
       render(); toast("삭제했어요");
     });
@@ -1222,7 +1250,11 @@ document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches('.clabel[role="button"]')) { e.preventDefault(); ACT.course(e.target); }
 });
 document.addEventListener("change", e => {
-  if (e.target.id === "stuSel") {
+  if (e.target.id === "scopeSel") {
+    S.showAll = e.target.value === "all"; lsSet("pref:showAll", S.showAll);
+    pickVisible(lsGet("pref:student"));
+    render();
+  } else if (e.target.id === "stuSel") {
     S.cur = S.students.find(s => s.id === e.target.value) || null;
     if (S.cur) lsSet("pref:student", S.cur.id);
     render();
@@ -1297,6 +1329,7 @@ document.addEventListener("pointerdown", e => {
   const el = e.target.closest(".subj[data-s]"); if (!el) return;
   const c = findCourse(el.dataset.c); if (!c) return;
   const idx = c.subjects.findIndex(s => s.id === el.dataset.s); if (idx < 0) return;
+  if (!S.cur) return; /* 수강생이 없으면 클릭 시 새 수강생 창이 뜸 */
   const st = ensureStudent();
   drag = { cid: c.id, start: idx, cur: idx, on: !(st.checked || {})[el.dataset.s] };
   S.preview = { ids: new Set(dragIds()), on: drag.on };
@@ -1394,8 +1427,10 @@ async function loadAll() {
     else { S.cur = null; toast("수강생 정보를 찾을 수 없어요. 링크를 다시 확인해 주세요"); }
     return;
   }
-  const last = LINK_ID || lsGet("pref:student");
-  S.cur = S.students.find(s => s.id === last) || S.students[0] || null;
+  S.showAll = lsGet("pref:showAll") === true;
+  S.cur = null;
+  pickVisible(LINK_ID || lsGet("pref:student"));
+  if (LINK_ID && !S.cur && Store.admin) { const st = S.students.find(s => s.id === LINK_ID); if (st) { S.showAll = true; S.cur = st; } }
 }
 async function onAuthChange() {
   S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {};
