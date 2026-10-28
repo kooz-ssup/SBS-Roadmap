@@ -237,6 +237,13 @@ table.days{border-collapse:collapse;width:100%;font-size:14px}
 /* 출력 직전 크기 측정용 (출력과 같은 배치) */
 body.pm .rm,body.pm .sc{width:1300px;max-width:none}
 body.pm main{max-width:none}
+/* 출력 배치는 화면 크기와 상관없이 항상 PC 배치로 고정 */
+body.pm .rm-body{grid-template-columns:1fr 1fr;padding:10px 24px 18px}
+body.pm .course{grid-template-columns:100px 1fr;gap:12px}
+body.pm .course.half{grid-column:auto;grid-template-columns:86px 1fr;gap:8px}
+body.pm .cicon{width:54px;height:54px;font-size:25px}
+body.pm .cname{font-size:13.5px;padding:2px 8px}
+body.pm .blocks{grid-template-columns:repeat(2,minmax(0,1fr))}
 body.pm .course{padding:7px 0 5px}
 body.pm .track{row-gap:6px}
 body.pm .subj{padding-top:15px;padding-bottom:3px}
@@ -246,7 +253,7 @@ body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,body.pm .addrow,body.pm .
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:10px;font-weight:700;font-size:13px;z-index:60;max-width:90vw}
 .loading{padding:60px;text-align:center;color:var(--muted)}
 
-@media (max-width:860px){
+@media screen and (max-width:860px){
   .rm-body{grid-template-columns:1fr;padding:8px 12px 14px}
   .course.half{grid-column:1/-1}
   .course{grid-template-columns:72px 1fr;gap:8px}
@@ -1324,45 +1331,51 @@ document.addEventListener("pointercancel", endDrag);
 
 /* ================= 출력 (A4 가로 한 장에 맞춤) ================= */
 const PAGE_W = 1062, PAGE_H = 728, DESIGN_W = 1300;
-function doPrint(which) {
+/* 출력 준비: 배치를 출력용으로 바꾸고, A4 가로 한 장에 맞는 배율을 계산 */
+let printPrep = null;
+function prepPrint(which) {
+  if (printPrep) return;
   const wasEdit = S.mode === "edit";
   if (wasEdit) { S.mode = "view"; render(); }
   const b = document.body;
   b.dataset.print = which;
   b.classList.add("pm");
-  const fit = sel => {
-    const el = document.querySelector(sel);
-    if (!el) return 1;
-    const h = el.scrollHeight || 1;
-    return Math.min(PAGE_W / DESIGN_W, PAGE_H / h) * 0.98;
-  };
-  /* 로드맵은 가로 폭을 바꿔 보며 A4 가로에 가장 크게 들어가는 폭을 고름 */
+  const SAFE = 0.96;
   const rmEl = document.querySelector(".rm");
   if (rmEl) {
+    /* 가로 폭을 바꿔 보며 한 장에 가장 크게 들어가는 폭을 고름 */
     let best = { z: 0, w: DESIGN_W };
-    for (let w = 1300; w <= 2100; w += 100) {
+    for (let w = 1300; w <= 2200; w += 100) {
       rmEl.style.width = w + "px";
-      const z = Math.min(PAGE_W / w, PAGE_H / (rmEl.scrollHeight || 1)) * 0.98;
+      const z = Math.min(PAGE_W / w, PAGE_H / (rmEl.scrollHeight || 1)) * SAFE;
       if (z > best.z) best = { z, w };
     }
     rmEl.style.width = best.w + "px";
     b.style.setProperty("--rmz", best.z);
   }
-  b.style.setProperty("--scz", fit(".sc"));
-  b.style.setProperty("--pgz", PAGE_W / DESIGN_W * 0.98);
-  let done = false;
-  const clean = () => {
-    if (done) return; done = true;
-    b.classList.remove("pm"); delete b.dataset.print;
-    const r = document.querySelector(".rm"); if (r) r.style.width = "";
-    window.removeEventListener("afterprint", clean);
-    if (wasEdit) { S.mode = "edit"; render(); }
-  };
-  window.addEventListener("afterprint", clean);
+  const scEl = document.querySelector(".sc");
+  if (scEl) b.style.setProperty("--scz", Math.min(PAGE_W / DESIGN_W, PAGE_H / (scEl.scrollHeight || 1)) * SAFE);
+  b.style.setProperty("--pgz", PAGE_W / DESIGN_W * SAFE);
+  printPrep = { wasEdit };
+}
+function endPrint() {
+  if (!printPrep) return;
+  const { wasEdit } = printPrep;
+  printPrep = null;
+  const b = document.body;
+  b.classList.remove("pm"); delete b.dataset.print;
+  const r = document.querySelector(".rm"); if (r) r.style.width = "";
+  if (wasEdit) { S.mode = "edit"; render(); }
+}
+function doPrint(which) {
+  prepPrint(which);
   try { window.print(); } catch (e) { toast("출력 창을 열 수 없어요. Ctrl+P로 인쇄하세요"); }
   /* 일부 브라우저는 출력 완료 신호를 보내지 않으므로, 다음 클릭 때 원래 화면으로 되돌림 */
-  setTimeout(() => document.addEventListener("pointerdown", clean, { once: true }), 0);
+  setTimeout(() => document.addEventListener("pointerdown", endPrint, { once: true }), 0);
 }
+/* Ctrl+P로 바로 인쇄해도 한 장에 맞춤 (홈 화면은 로드맵+일정표 모두) */
+window.addEventListener("beforeprint", () => { prepPrint(S.page.name === "home" ? "both" : "page"); });
+window.addEventListener("afterprint", endPrint);
 
 /* 페이지를 닫기 전에 남은 저장 처리 */
 window.addEventListener("pagehide", () => { Object.keys(pending).forEach(p => flush(p)); Object.keys(pendP).forEach(id => flushP(id)); });
