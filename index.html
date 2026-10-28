@@ -454,6 +454,7 @@ const Store = {
         authM.onAuthStateChanged(this.auth, async u => {
           this.user = u;
           this.staff = u ? await this.checkStaff(u) : false;
+          if (!u) this.admin = false;
           if (first) { first = false; res(); } else onAuthChange();
         });
       });
@@ -462,9 +463,16 @@ const Store = {
       this.failed = true;
     }
   },
+  /* admins 문서가 있으면 직원, 그 문서의 role 값이 admin이면 관리자 */
   async checkStaff(u) {
+    this.admin = false;
     if (!u.email) return false;
-    try { const s = await this.m.getDoc(this.m.doc(this.fs, "admins", u.email)); return s.exists(); } catch (e) { return false; }
+    try {
+      const s = await this.m.getDoc(this.m.doc(this.fs, "admins", u.email));
+      if (!s.exists()) return false;
+      this.admin = String((s.data() || {}).role || "").trim().toLowerCase() === "admin";
+      return true;
+    } catch (e) { return false; }
   },
   ref(path) { return this.m.doc(this.fs, ...path.split("/")); },
   async get(path) {
@@ -494,7 +502,10 @@ const Store = {
   },
   async logout() { try { await this.a.signOut(this.auth); } catch (e) {} }
 };
+/* canEdit: 수강생 체크·일정 입력 가능 (직원 이상) / canAdmin: 로드맵·커리큘럼·학사일정 수정 가능 (관리자) */
 const canEdit = () => Store.local ? !Store.failed : Store.staff;
+const canAdmin = () => Store.local ? !Store.failed : (Store.staff && Store.admin);
+const STUDENT_KEYS = new Set(["sname", "cell"]);
 
 const pending = {}, timers = {}, busy = {};
 let saveState = "idle";
@@ -619,6 +630,14 @@ function render() {
   if (!canEdit()) {
     app.querySelectorAll("input:not(#focusChk), textarea").forEach(i => { i.readOnly = true; i.removeAttribute("list"); i.tabIndex = -1; });
     app.querySelectorAll('input[type="date"]').forEach(i => { i.type = "text"; });
+  } else if (!canAdmin()) {
+    /* 직원: 수강생 이름·시간표 칸만 입력 가능 */
+    app.querySelectorAll("input[data-k], textarea[data-k]").forEach(i => {
+      if (STUDENT_KEYS.has(i.dataset.k)) return;
+      i.readOnly = true; i.tabIndex = -1;
+      if (i.type === "date") i.type = "text";
+      if (i.type === "checkbox") i.disabled = true;
+    });
   }
 }
 
@@ -626,7 +645,7 @@ function authHTML() {
   if (Store.failed) return `<span class="save err">저장소 연결 실패</span>`;
   if (Store.local) return "";
   if (!Store.user) return `<button class="btn sm" data-act="login">직원 로그인</button>`;
-  return `<span class="who" title="${esc(Store.user.email || "")}">${esc(Store.user.displayName || Store.user.email || "")}${Store.staff ? "" : " (보기 전용)"}</span><button class="btn sm" data-act="logout">로그아웃</button>`;
+  return `<span class="who" title="${esc(Store.user.email || "")}">${esc(Store.user.displayName || Store.user.email || "")}${Store.staff ? (Store.admin ? " (관리자)" : " (직원)") : " (보기 전용)"}</span><button class="btn sm" data-act="logout">로그아웃</button>`;
 }
 
 function renderBar() {
@@ -655,7 +674,7 @@ function renderBar() {
       <div class="seg" role="group" aria-label="작업 모드">
         <button data-act="mode" data-m="view" aria-pressed="${S.mode === "view"}">보기</button>
         <button data-act="mode" data-m="check" aria-pressed="${S.mode === "check"}">수강 과목 체크</button>
-        <button data-act="mode" data-m="edit" aria-pressed="${S.mode === "edit"}">편집</button>
+        ${canAdmin() ? `<button data-act="mode" data-m="edit" aria-pressed="${S.mode === "edit"}">편집</button>` : ""}
       </div>
       <label class="toggle"><input type="checkbox" id="focusChk"${S.focus ? " checked" : ""}> 체크한 과목만 강조</label>`;
     const msg = {
@@ -666,7 +685,7 @@ function renderBar() {
     hint.className = "hint" + (S.mode === "edit" ? " edit" : "");
     hint.innerHTML = msg ? `<p>${msg}</p>` : "";
   } else {
-    ctx.innerHTML = `<span class="spacer"></span>
+    ctx.innerHTML = !canAdmin() ? "" : `<span class="spacer"></span>
       <button class="btn sm" data-act="copySame">같은 과목에 복사</button>
       <button class="btn ${S.subjEdit ? "rose" : ""}" data-act="subjEdit">${S.subjEdit ? "✓ 수정 완료" : "✏️ 커리큘럼 수정"}</button>`;
     hint.hidden = true;
@@ -677,7 +696,7 @@ function homeHTML() { return roadmapHTML() + scheduleHTML(); }
 
 function roadmapHTML() {
   const R = S.roadmap, edit = S.mode === "edit";
-  if (!R && !canEdit()) return `<section class="sheet rm"><div class="empty"><p>로드맵을 준비하고 있어요.</p></div></section>`;
+  if (!R && !canAdmin()) return `<section class="sheet rm"><div class="empty"><p>로드맵을 준비하고 있어요.</p></div></section>`;
   if (!R) {
     return `<section class="sheet rm"><div class="empty"><p>아직 로드맵이 없어요. 학원 기본 로드맵을 불러오거나 빈 과정부터 만들어 보세요.</p>
       <div class="btns"><button class="btn pri" data-act="loadRoadmap">기본 로드맵 불러오기</button><button class="btn" data-act="addCourse">빈 과정 만들기</button></div></div></section>`;
@@ -734,7 +753,7 @@ function courseHTML(c, ci, sel, edit) {
 
 function scheduleHTML() {
   const C = S.schedule, edit = S.mode === "edit";
-  if (!C && !canEdit()) return "";
+  if (!C && !canAdmin()) return "";
   if (!C) {
     return `<section class="sheet sc"><div class="empty"><p>수업일정표가 아직 없어요.</p><div class="btns"><button class="btn pri" data-act="loadSchedule">기본 일정표 불러오기</button></div></div></section>`;
   }
@@ -827,7 +846,7 @@ function subjectHTML() {
   let body = "";
   if (tab === "daily") {
     if (!cur.days.length && !ed) {
-      body = `<div class="empty"><p>아직 일자별 커리큘럼이 없어요.</p><div class="btns"><button class="btn rose" data-act="subjEdit">✏️ 회차 입력하기</button></div></div>`;
+      body = `<div class="empty"><p>아직 일자별 커리큘럼이 없어요.</p>${canAdmin() ? `<div class="btns"><button class="btn rose" data-act="subjEdit">✏️ 회차 입력하기</button></div>` : ""}</div>`;
     } else {
       const rows = cur.days.map((d, i) => ed
         ? `<tr><td class="no">${i + 1}회차</td>
@@ -842,7 +861,7 @@ function subjectHTML() {
   } else {
     const filled = SUMF.filter(([k]) => (cur.summary[k] || "").trim());
     if (!filled.length && !ed) {
-      body = `<div class="empty"><p>아직 요약 커리큘럼이 없어요.</p><div class="btns"><button class="btn rose" data-act="subjEdit">✏️ 요약 입력하기</button></div></div>`;
+      body = `<div class="empty"><p>아직 요약 커리큘럼이 없어요.</p>${canAdmin() ? `<div class="btns"><button class="btn rose" data-act="subjEdit">✏️ 요약 입력하기</button></div>` : ""}</div>`;
     } else {
       body = `<div class="sum">` + (ed
         ? SUMF.map(([k, l]) => `<section><h3>${l}</h3><textarea data-k="sum" data-f="${k}" aria-label="${l}" placeholder="${l}을(를) 입력하세요">${esc(cur.summary[k] || "")}</textarea></section>`).join("")
@@ -1008,6 +1027,9 @@ function back() {
 }
 
 /* ================= 클릭 동작 ================= */
+const ADMIN_ACTS = new Set(["addSubj", "addCourse", "cMove", "cDel", "loadRoadmap", "resetRoadmap", "loadSchedule", "resetSchedule",
+  "addMonth", "delMonth", "addRow", "delRow", "addGroup", "delGroup", "addBlock", "delBlock",
+  "subjEdit", "dayAdd", "dayAddMany", "dayMove", "dayDel", "copySame"]);
 const ACT = {
   home() { S.stack = []; S.page = { name: "home" }; S.subjEdit = false; render(); window.scrollTo(0, 0); },
   back,
@@ -1022,7 +1044,7 @@ const ACT = {
         .concat(hasSc ? [{ label: "수업일정표만", fn: () => { setTimeout(() => doPrint("sc"), 50); } }, { label: "둘 다", cls: "pri", fn: () => { setTimeout(() => doPrint("both"), 50); } }] : [])
     });
   },
-  mode(el) { S.mode = el.dataset.m; render(); },
+  mode(el) { const m = el.dataset.m; if (m === "edit" && !canAdmin()) return; S.mode = m; render(); },
   subj(el) {
     const c = findCourse(el.dataset.c), s = c?.subjects.find(x => x.id === el.dataset.s);
     if (!s) return;
@@ -1134,7 +1156,7 @@ const ACT = {
   tab(el) {
     S.tab = el.dataset.t;
     const cur = S.curr[S.page.sid];
-    if (cur && cur.mode !== S.tab) { cur.mode = S.tab; save("curricula/" + S.page.sid, cur); }
+    if (cur && cur.mode !== S.tab) { cur.mode = S.tab; if (canAdmin()) save("curricula/" + S.page.sid, cur); }
     render();
   },
   dayAdd() { const cur = S.curr[S.page.sid]; cur.days.push({ id: uid("d"), title: "", content: "", note: "" }); save("curricula/" + S.page.sid, cur); render(); focusLastDay(); },
@@ -1182,8 +1204,12 @@ function focusLastDay() { setTimeout(() => { const all = document.querySelectorA
 document.addEventListener("click", e => {
   const el = e.target.closest("[data-act]");
   if (!el || el.disabled) return;
-  const fn = ACT[el.dataset.act];
-  if (fn) { e.preventDefault(); fn(el, e); }
+  const act = el.dataset.act;
+  const fn = ACT[act];
+  if (!fn) return;
+  e.preventDefault();
+  if (ADMIN_ACTS.has(act) && !canAdmin()) { toast("관리자만 할 수 있어요"); return; }
+  fn(el, e);
 });
 document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches('.clabel[role="button"]')) { e.preventDefault(); ACT.course(e.target); }
@@ -1238,7 +1264,12 @@ const IN = {
   day(el) { const cur = S.curr[S.page.sid]; const d = cur?.days[+el.dataset.i]; if (d) { d[el.dataset.f] = el.value; save("curricula/" + S.page.sid, cur); } },
   sum(el) { const cur = S.curr[S.page.sid]; if (cur) { cur.summary[el.dataset.f] = el.value; save("curricula/" + S.page.sid, cur); } }
 };
-document.addEventListener("input", e => { const k = e.target.dataset?.k; if (k && IN[k]) IN[k](e.target); });
+document.addEventListener("input", e => {
+  const k = e.target.dataset?.k;
+  if (!k || !IN[k] || !canEdit()) return;
+  if (!STUDENT_KEYS.has(k) && !canAdmin()) return;
+  IN[k](e.target);
+});
 
 
 /* ================= 드래그로 여러 과목 체크 ================= */
