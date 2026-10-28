@@ -215,6 +215,28 @@ table.days{border-collapse:collapse;width:100%;font-size:14px}
 .sum h3{margin:0 0 4px;font-size:14px;font-weight:800;color:var(--rose-d)}
 .sum p{margin:0;white-space:pre-line;max-width:80ch}
 .sum textarea{min-height:80px}
+.shared{margin:8px 0 0;font-size:13px;color:var(--muted)}
+.simgs{display:grid;gap:16px}
+.simg{margin:0;position:relative}
+.simg img{display:block;width:100%;height:auto;max-width:1100px;margin:0 auto;border-radius:8px;border:1px solid var(--line);background:#fff;min-height:60px}
+.simg.missing img{display:none}
+.simg.missing::after{content:"이미지를 불러오지 못했어요";display:block;padding:20px;text-align:center;color:var(--muted)}
+.simg-op{display:flex;gap:6px;justify-content:center;margin-top:8px}
+.drop{border:2px dashed var(--line);border-radius:12px;padding:20px;text-align:center;margin-bottom:18px;background:var(--field)}
+.drop.over{border-color:var(--rose);background:var(--sel)}
+.drop p{margin:0 0 8px}
+.drop .help{font-size:13px;color:var(--muted)}
+.drop label.btn{cursor:pointer}
+.sumtext{margin-top:18px}
+.sumtext summary{cursor:pointer;font-weight:800;color:var(--muted);margin-bottom:12px}
+.mentor{margin-top:28px;border-radius:14px;padding:18px 20px;background:linear-gradient(135deg,var(--sel),var(--field));border:1px solid var(--blush)}
+.mentor h3{margin:0 0 10px;font-size:17px;font-weight:800;color:var(--rose-d)}
+.mentor .help{margin:-4px 0 10px;font-size:12px;color:var(--muted)}
+.mrow+.mrow{margin-top:12px}
+.mrow h4{margin:0 0 3px;font-size:14px;font-weight:700}
+.mrow p{margin:0;white-space:pre-line;line-height:1.6}
+.mrow a{color:var(--rose-d);word-break:break-all}
+.mrow textarea{width:100%;min-height:64px;border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:7px 9px;resize:vertical}
 .pager{display:flex;justify-content:space-between;gap:10px;padding:0 26px 22px}
 .pager .btn{max-width:48%;overflow:hidden;text-overflow:ellipsis}
 
@@ -284,8 +306,11 @@ body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,body.pm .addrow,body.pm .
   .track{row-gap:6px}
   .subj{padding-top:15px;padding-bottom:3px}
   .rm,.sc{width:1300px;max-width:none}
-  .rm{zoom:var(--rmz,.8)}
-  .sc{zoom:var(--scz,.8)}
+  .rm{zoom:var(--rmz,.8);margin:var(--rmmt,0px) auto 0!important}
+  .sc{zoom:var(--scz,.8);margin:var(--scmt,0px) auto 0!important}
+  body[data-print="page"] main > .sheet{margin:0 auto!important}
+  .simg{break-inside:avoid}
+  .mentor{break-inside:avoid}
   .rm + .sc{break-before:page}
   .rm,.sc{break-inside:avoid}
   body[data-print="rm"] .sc{display:none!important}
@@ -719,7 +744,6 @@ function renderBar() {
     hint.innerHTML = msg ? `<p>${msg}</p>` : "";
   } else {
     ctx.innerHTML = !canAdmin() ? "" : `<span class="spacer"></span>
-      <button class="btn sm" data-act="copySame">같은 과목에 복사</button>
       <button class="btn ${S.subjEdit ? "rose" : ""}" data-act="subjEdit">${S.subjEdit ? "✓ 수정 완료" : "✏️ 커리큘럼 수정"}</button>`;
     hint.hidden = true;
   }
@@ -855,31 +879,63 @@ function fillDatalist() {
 
 /* ---------- 과목 상세 ---------- */
 const SUMF = [["intro", "과목 소개"], ["goal", "학습 목표"], ["content", "주요 학습 내용"], ["result", "완성 결과물"], ["period", "수업 기간·시간"]];
-function emptyCurr() { return { mode: "daily", days: [], summary: {} }; }
-async function loadCurr(sid) {
-  if (S.curr[sid] !== undefined || loadCurr.busy === sid) return;
-  loadCurr.busy = sid;
-  const d = await Store.get("curricula/" + sid);
+const MENTORF = [["lecture", "📺 함께 보면 좋은 강의", "예: 유튜브 ‘○○○ 포토샵 기초’ 채널, 인프런 ‘△△ 강의’ (주소를 넣으면 바로 열 수 있어요)"],
+  ["review", "🔁 복습 방법", "예: 수업 당일 실습 파일을 처음부터 다시 따라 만들어 보기"],
+  ["tip", "💡 수업 팁", "예: 단축키 표를 출력해서 모니터 옆에 붙여 두면 금방 익숙해져요"]];
+function emptyCurr() { return { mode: "daily", days: [], summary: {}, summaryImgs: [], mentor: {} }; }
+/* 과목명+단계가 같으면 어느 과정이든 같은 커리큘럼을 씀 */
+function subjKey(s) { return "k_" + ((s.name || "") + "|" + (s.level || "")).replace(/\s+/g, "").replace(/\//g, "∕"); }
+function pageSubject() { const c = findCourse(S.page.cid); return c?.subjects.find(x => x.id === S.page.sid) || null; }
+function pageKey() { const s = pageSubject(); return s ? subjKey(s) : ""; }
+function curOf() { return S.curr[pageKey()]; }
+function saveCur() { const k = pageKey(), cur = S.curr[k]; if (k && cur && canAdmin()) save("curricula/" + k, cur); }
+function sameSubjects(s) {
+  const k = subjKey(s), out = [];
+  (S.roadmap?.courses || []).forEach(c => c.subjects.forEach(x => { if (subjKey(x) === k) out.push(c); }));
+  return out;
+}
+async function loadCurr(s) {
+  const k = subjKey(s);
+  if (S.curr[k] !== undefined || loadCurr.busy === k) return;
+  loadCurr.busy = k;
+  let d = await Store.get("curricula/" + k);
+  if (!d) d = await Store.get("curricula/" + s.id); /* 예전 방식(과목별)으로 저장된 내용이 있으면 이어서 사용 */
   loadCurr.busy = null;
-  S.curr[sid] = d ? Object.assign(emptyCurr(), d) : emptyCurr();
-  if (S.page.name === "subject" && S.page.sid === sid) render();
+  const cur = Object.assign(emptyCurr(), d || {});
+  cur.summary = cur.summary || {}; cur.summaryImgs = cur.summaryImgs || []; cur.mentor = cur.mentor || {};
+  S.curr[k] = cur;
+  if (S.page.name === "subject" && pageKey() === k) render();
+}
+/* 요약 커리큘럼 이미지 (images 컬렉션에 따로 보관) */
+S.img = {};
+async function loadImg(id) {
+  if (S.img[id] !== undefined) return;
+  S.img[id] = null;
+  const d = await Store.get("images/" + id);
+  S.img[id] = d && d.data ? d.data : "";
+  const el = document.querySelector(`img[data-img="${CSS.escape(id)}"]`);
+  if (el) { if (S.img[id]) el.src = S.img[id]; else el.closest(".simg")?.classList.add("missing"); }
+}
+function linkify(t) {
+  return esc(t).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
 }
 function subjectHTML() {
-  const { cid, sid } = S.page;
-  const c = findCourse(cid), s = c?.subjects.find(x => x.id === sid);
+  const { cid } = S.page;
+  const c = findCourse(cid), s = pageSubject();
   if (!s) return `<section class="sheet"><div class="empty"><p>이 과목을 찾을 수 없어요. 삭제되었을 수 있습니다.</p><div class="btns"><button class="btn pri" data-act="home">홈으로</button></div></div></section>`;
-  const cur = S.curr[sid];
-  if (cur === undefined) { loadCurr(sid); return `<section class="sheet"><div class="loading">커리큘럼 불러오는 중…</div></section>`; }
+  const cur = S.curr[subjKey(s)];
+  if (cur === undefined) { loadCurr(s); return `<section class="sheet"><div class="loading">커리큘럼 불러오는 중…</div></section>`; }
   const tab = S.tab || cur.mode || "daily";
-  const ed = S.subjEdit;
+  const ed = S.subjEdit && canAdmin();
   const idx = c.subjects.indexOf(s);
   const prev = c.subjects[idx - 1], next = c.subjects[idx + 1];
   const nm = x => esc([x.name, x.level].filter(Boolean).join(" ").replace(/\n/g, " "));
+  const editBtn = label => canAdmin() ? `<div class="btns"><button class="btn rose" data-act="subjEdit">✏️ ${label}</button></div>` : "";
 
   let body = "";
   if (tab === "daily") {
     if (!cur.days.length && !ed) {
-      body = `<div class="empty"><p>아직 일자별 커리큘럼이 없어요.</p>${canAdmin() ? `<div class="btns"><button class="btn rose" data-act="subjEdit">✏️ 회차 입력하기</button></div>` : ""}</div>`;
+      body = `<div class="empty"><p>아직 일자별 커리큘럼이 없어요.</p>${editBtn("회차 입력하기")}</div>`;
     } else {
       const rows = cur.days.map((d, i) => ed
         ? `<tr><td class="no">${i + 1}회차</td>
@@ -892,32 +948,126 @@ function subjectHTML() {
         ${ed ? `<div class="row-btns no-print"><button class="btn" data-act="dayAdd">+ 회차 추가</button><button class="btn" data-act="dayAddMany">회차 여러 개 만들기</button></div>` : ""}`;
     }
   } else {
+    const imgs = cur.summaryImgs || [];
     const filled = SUMF.filter(([k]) => (cur.summary[k] || "").trim());
-    if (!filled.length && !ed) {
-      body = `<div class="empty"><p>아직 요약 커리큘럼이 없어요.</p>${canAdmin() ? `<div class="btns"><button class="btn rose" data-act="subjEdit">✏️ 요약 입력하기</button></div>` : ""}</div>`;
+    imgs.forEach(im => loadImg(im.id));
+    const imgHTML = imgs.map((im, i) => `<figure class="simg">
+        <img data-img="${esc(im.id)}" src="${S.img[im.id] || ""}" alt="${esc(s.name)} 요약 커리큘럼 ${i + 1}" ${im.w ? `width="${im.w}" height="${im.h}"` : ""}>
+        ${ed ? `<div class="simg-op no-print"><button class="btn sm" data-act="imgMove" data-i="${i}" data-d="-1">▲ 위로</button><button class="btn sm" data-act="imgMove" data-i="${i}" data-d="1">▼ 아래로</button><button class="btn sm danger" data-act="imgDel" data-i="${i}">삭제</button></div>` : ""}
+      </figure>`).join("");
+    if (!imgs.length && !filled.length && !ed) {
+      body = `<div class="empty"><p>아직 요약 커리큘럼이 없어요.</p>${editBtn("요약 커리큘럼 올리기")}</div>`;
     } else {
-      body = `<div class="sum">` + (ed
-        ? SUMF.map(([k, l]) => `<section><h3>${l}</h3><textarea data-k="sum" data-f="${k}" aria-label="${l}" placeholder="${l}을(를) 입력하세요">${esc(cur.summary[k] || "")}</textarea></section>`).join("")
-        : filled.map(([k, l]) => `<section><h3>${l}</h3><p>${esc(cur.summary[k])}</p></section>`).join("")) + `</div>`;
+      body = (ed ? `<div class="drop no-print" id="dropZone">
+            <p><b>요약 커리큘럼 이미지 올리기</b></p>
+            <p class="help">캡처한 이미지를 <b>Ctrl+V</b>로 붙여 넣거나, 파일을 여기에 끌어다 놓거나, 아래 버튼으로 고르세요. 여러 장도 됩니다.</p>
+            <label class="btn pri"><input type="file" id="imgFile" accept="image/*" multiple hidden> 이미지 파일 고르기</label>
+          </div>` : "")
+        + (imgs.length ? `<div class="simgs">${imgHTML}</div>` : "")
+        + (ed
+          ? `<details class="sumtext no-print"${filled.length ? " open" : ""}><summary>글로 쓰는 요약 (선택)</summary><div class="sum">${SUMF.map(([k, l]) => `<section><h3>${l}</h3><textarea data-k="sum" data-f="${k}" aria-label="${l}" placeholder="${l}을(를) 입력하세요">${esc(cur.summary[k] || "")}</textarea></section>`).join("")}</div></details>`
+          : (filled.length ? `<div class="sum"${imgs.length ? ' style="margin-top:20px"' : ""}>${filled.map(([k, l]) => `<section><h3>${l}</h3><p>${esc(cur.summary[k])}</p></section>`).join("")}</div>` : ""));
     }
   }
+
+  /* 멘토 한마디 */
+  const mfilled = MENTORF.filter(([k]) => (cur.mentor[k] || "").trim());
+  let mentor = "";
+  if (ed) {
+    mentor = `<section class="mentor"><h3>💬 멘토 한마디</h3><p class="help">비워 둔 항목은 보이지 않아요.</p>
+      ${MENTORF.map(([k, l, ph]) => `<div class="mrow"><h4>${l}</h4><textarea data-k="mentor" data-f="${k}" placeholder="${esc(ph)}" aria-label="${l}">${esc(cur.mentor[k] || "")}</textarea></div>`).join("")}</section>`;
+  } else if (mfilled.length) {
+    mentor = `<section class="mentor"><h3>💬 멘토 한마디</h3>${mfilled.map(([k, l]) => `<div class="mrow"><h4>${l}</h4><p>${linkify(cur.mentor[k])}</p></div>`).join("")}</section>`;
+  }
+
+  const shared = sameSubjects(s);
+  const sharedNote = ed && shared.length > 1
+    ? `<p class="shared no-print">🔗 같은 과목명이 있는 <b>${shared.map(x => esc(x.name)).join(", ")}</b> 과정에 똑같이 적용됩니다.</p>` : "";
+
   return `<section class="sheet">
     <div class="sp-head"><div class="ribbon"></div>
       <div class="crumb">${iconHTML(c.icon, "crumb-ic")}<b>${esc(c.name)}</b>${c.sub ? esc(" " + c.sub) : ""} 과정</div>
       <h2>${esc(s.name)}${s.level ? `<span class="lv">${esc(s.level)}</span>` : ""}</h2>
       ${s.note ? `<p class="nt">${esc(s.note)}</p>` : ""}
+      ${sharedNote}
       <div class="tabs" role="tablist">
         <button role="tab" data-act="tab" data-t="daily" aria-selected="${tab === "daily"}">일자별 커리큘럼${cur.days.length ? ` (${cur.days.length})` : ""}</button>
-        <button role="tab" data-act="tab" data-t="summary" aria-selected="${tab === "summary"}">요약 커리큘럼</button>
+        <button role="tab" data-act="tab" data-t="summary" aria-selected="${tab === "summary"}">요약 커리큘럼${(cur.summaryImgs || []).length ? ` (${cur.summaryImgs.length})` : ""}</button>
       </div>
     </div>
-    <div class="sp-body">${body}</div>
+    <div class="sp-body">${body}${mentor}</div>
     <div class="pager no-print">
       ${prev ? `<button class="btn" data-act="goSubj" data-c="${esc(c.id)}" data-s="${esc(prev.id)}">← ${nm(prev)}</button>` : "<span></span>"}
       ${next ? `<button class="btn" data-act="goSubj" data-c="${esc(c.id)}" data-s="${esc(next.id)}">${nm(next)} →</button>` : "<span></span>"}
     </div>
   </section>`;
 }
+
+/* 이미지를 줄여서(1MB 이하) 보관 */
+function readImage(file) {
+  return new Promise((res, rej) => {
+    const url = URL.createObjectURL(file);
+    const im = new Image();
+    im.onload = () => { URL.revokeObjectURL(url); res(im); };
+    im.onerror = () => { URL.revokeObjectURL(url); rej(new Error("이미지를 읽을 수 없어요")); };
+    im.src = url;
+  });
+}
+async function compressImage(file) {
+  const im = await readImage(file);
+  const cv = document.createElement("canvas");
+  const webp = cv.toDataURL("image/webp").startsWith("data:image/webp");
+  const type = webp ? "image/webp" : "image/jpeg";
+  let maxW = 2000, q = 0.9;
+  for (let t = 0; t < 10; t++) {
+    const sc = Math.min(1, maxW / im.naturalWidth);
+    const w = Math.max(1, Math.round(im.naturalWidth * sc)), h = Math.max(1, Math.round(im.naturalHeight * sc));
+    cv.width = w; cv.height = h;
+    const g = cv.getContext("2d");
+    g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
+    g.drawImage(im, 0, 0, w, h);
+    const data = cv.toDataURL(type, q);
+    if (data.length <= 900000) return { data, w, h };
+    if (q > 0.65) q -= 0.1; else maxW = Math.round(maxW * 0.8);
+  }
+  throw new Error("이미지가 너무 커요");
+}
+async function addImages(files) {
+  const cur = curOf(), k = pageKey();
+  if (!cur || !canAdmin()) return;
+  const list = Array.from(files || []).filter(f => f.type && f.type.startsWith("image/"));
+  if (!list.length) { toast("이미지 파일만 올릴 수 있어요"); return; }
+  setSave("saving", "이미지 올리는 중…");
+  let ok = 0;
+  for (const f of list) {
+    try {
+      const { data, w, h } = await compressImage(f);
+      const id = uid("img");
+      if (Store.local) lsSet("images/" + id, { data, w, h });
+      else await Store.set("images/" + id, { data, w, h, createdAt: Date.now() });
+      S.img[id] = data;
+      cur.summaryImgs.push({ id, w, h });
+      ok++;
+    } catch (e) { console.error(e); setSave("error", e.code ? errMsg(e) : (e.message || "이미지 저장 실패")); }
+  }
+  if (ok) {
+    save("curricula/" + k, cur);
+    if (pageKey() === k) { S.tab = "summary"; render(); }
+    toast(`이미지 ${ok}장을 올렸어요`);
+  }
+}
+/* 붙여넣기(Ctrl+V)·끌어다 놓기·파일 고르기 */
+document.addEventListener("paste", e => {
+  if (S.page.name !== "subject" || !S.subjEdit || !canAdmin()) return;
+  const files = Array.from(e.clipboardData?.items || []).filter(i => i.kind === "file" && i.type.startsWith("image/")).map(i => i.getAsFile()).filter(Boolean);
+  if (!files.length) return;
+  e.preventDefault();
+  addImages(files);
+});
+document.addEventListener("change", e => { if (e.target.id === "imgFile") { addImages(e.target.files); e.target.value = ""; } });
+document.addEventListener("dragover", e => { const z = e.target.closest?.("#dropZone"); if (z) { e.preventDefault(); z.classList.add("over"); } });
+document.addEventListener("dragleave", e => { const z = e.target.closest?.("#dropZone"); if (z) z.classList.remove("over"); });
+document.addEventListener("drop", e => { const z = e.target.closest?.("#dropZone"); if (z) { e.preventDefault(); z.classList.remove("over"); addImages(e.dataTransfer?.files); } });
 
 /* ================= 모달·토스트 ================= */
 function modal({ title, body, actions }) {
@@ -963,12 +1113,21 @@ function editSubject(c, s) {
       const name = box.querySelector("#f-name").value.trim();
       if (!name) { toast("과목명을 입력하세요"); return false; }
       const o = isNew ? { id: uid(c.id + "-") } : s;
+      const oldKey = isNew ? null : subjKey(o);
       o.name = name;
       o.level = box.querySelector("#f-level").value.trim();
       o.note = box.querySelector("#f-note").value.trim();
       o.br = box.querySelector("#f-br").checked;
       if (isNew) c.subjects.push(o);
       saveRoadmap(); render();
+      /* 과목명을 바꿨을 때, 새 이름의 커리큘럼이 없으면 기존 커리큘럼을 이어서 사용 */
+      const newKey = subjKey(o);
+      if (oldKey && oldKey !== newKey) (async () => {
+        const nd = S.curr[newKey] || await Store.get("curricula/" + newKey);
+        if (nd && (nd.days?.length || nd.summaryImgs?.length || Object.values(nd.summary || {}).some(v => (v || "").trim()) || Object.values(nd.mentor || {}).some(v => (v || "").trim()))) return;
+        const od = S.curr[oldKey] || await Store.get("curricula/" + oldKey) || await Store.get("curricula/" + o.id);
+        if (od) { S.curr[newKey] = Object.assign(emptyCurr(), clone(od)); save("curricula/" + newKey, S.curr[newKey]); }
+      })();
     }
   });
   modal({
@@ -996,7 +1155,6 @@ function delSubject(c, s) {
         if (!Store.local) Store.merge("students/" + st.id, { checked: { [s.id]: DEL } }).catch(() => {});
       }
     });
-    removeDoc("curricula/" + s.id); delete S.curr[s.id];
     saveRoadmap(); render(); toast("삭제했어요");
   });
 }
@@ -1040,7 +1198,6 @@ function editCourse(c) {
 function delCourse(c) {
   confirmBox("과정 삭제", `‘${c.name}’ 과정과 그 안의 과목 ${c.subjects.length}개를 삭제할까요?`, "삭제", () => {
     S.roadmap.courses = S.roadmap.courses.filter(x => x !== c);
-    c.subjects.forEach(s => { removeDoc("curricula/" + s.id); delete S.curr[s.id]; });
     saveRoadmap(); render(); toast("삭제했어요");
   });
 }
@@ -1062,7 +1219,7 @@ function back() {
 /* ================= 클릭 동작 ================= */
 const ADMIN_ACTS = new Set(["addSubj", "addCourse", "cMove", "cDel", "loadRoadmap", "resetRoadmap", "loadSchedule", "resetSchedule",
   "addMonth", "delMonth", "addRow", "delRow", "addGroup", "delGroup", "addBlock", "delBlock",
-  "subjEdit", "dayAdd", "dayAddMany", "dayMove", "dayDel", "copySame"]);
+  "subjEdit", "dayAdd", "dayAddMany", "dayMove", "dayDel", "imgMove", "imgDel"]);
 const ACT = {
   home() { S.stack = []; S.page = { name: "home" }; S.subjEdit = false; render(); window.scrollTo(0, 0); },
   back,
@@ -1190,49 +1347,47 @@ const ACT = {
   subjEdit() { S.subjEdit = !S.subjEdit; render(); },
   tab(el) {
     S.tab = el.dataset.t;
-    const cur = S.curr[S.page.sid];
-    if (cur && cur.mode !== S.tab) { cur.mode = S.tab; if (canAdmin()) save("curricula/" + S.page.sid, cur); }
+    const cur = curOf();
+    if (cur && cur.mode !== S.tab) { cur.mode = S.tab; saveCur(); }
     render();
   },
-  dayAdd() { const cur = S.curr[S.page.sid]; cur.days.push({ id: uid("d"), title: "", content: "", note: "" }); save("curricula/" + S.page.sid, cur); render(); focusLastDay(); },
+  dayAdd() { const cur = curOf(); cur.days.push({ id: uid("d"), title: "", content: "", note: "" }); saveCur(); render(); focusLastDay(); },
+  imgMove(el) {
+    const cur = curOf(), L = cur.summaryImgs, i = +el.dataset.i, j = i + (+el.dataset.d);
+    if (j < 0 || j >= L.length) return;
+    [L[i], L[j]] = [L[j], L[i]]; saveCur(); render();
+  },
+  imgDel(el) {
+    const cur = curOf(), i = +el.dataset.i, im = cur.summaryImgs[i];
+    if (!im) return;
+    confirmBox("이미지 삭제", `요약 커리큘럼 ${i + 1}번째 이미지를 삭제할까요?`, "삭제", () => {
+      cur.summaryImgs.splice(i, 1); saveCur(); removeDoc("images/" + im.id); delete S.img[im.id]; render();
+    });
+  },
   dayAddMany() {
     modal({
       title: "회차 여러 개 만들기", body: `<label>추가할 회차 수<input type="number" id="f-n" min="1" max="60" value="10"></label>`,
       actions: [{ label: "취소" }, {
         label: "만들기", cls: "pri", fn: box => {
           const n = Math.max(1, Math.min(60, parseInt(box.querySelector("#f-n").value, 10) || 0));
-          const cur = S.curr[S.page.sid];
+          const cur = curOf();
           for (let i = 0; i < n; i++) cur.days.push({ id: uid("d"), title: "", content: "", note: "" });
-          save("curricula/" + S.page.sid, cur); render();
+          saveCur(); render();
         }
       }]
     });
   },
   dayMove(el) {
-    const cur = S.curr[S.page.sid], i = +el.dataset.i, j = i + (+el.dataset.d);
+    const cur = curOf(), i = +el.dataset.i, j = i + (+el.dataset.d);
     if (j < 0 || j >= cur.days.length) return;
-    [cur.days[i], cur.days[j]] = [cur.days[j], cur.days[i]]; save("curricula/" + S.page.sid, cur); render();
+    [cur.days[i], cur.days[j]] = [cur.days[j], cur.days[i]]; saveCur(); render();
   },
   dayDel(el) {
-    const cur = S.curr[S.page.sid], i = +el.dataset.i;
+    const cur = curOf(), i = +el.dataset.i;
     const d = cur.days[i];
-    const doDel = () => { cur.days.splice(i, 1); save("curricula/" + S.page.sid, cur); render(); };
+    const doDel = () => { cur.days.splice(i, 1); saveCur(); render(); };
     if ((d.title + d.content + d.note).trim()) confirmBox("회차 삭제", `${i + 1}회차를 삭제할까요?`, "삭제", doDel); else doDel();
   },
-  copySame() {
-    const { cid, sid } = S.page;
-    const c = findCourse(cid), s = c?.subjects.find(x => x.id === sid), cur = S.curr[sid];
-    if (!s || !cur) return;
-    const key = x => (x.name + "|" + x.level).replace(/\s+/g, "");
-    const targets = [];
-    S.roadmap.courses.forEach(cc => cc.subjects.forEach(ss => { if (ss.id !== sid && key(ss) === key(s)) targets.push([cc, ss]); }));
-    if (!targets.length) { toast("다른 과정에 같은 이름의 과목이 없어요"); return; }
-    const nm = [s.name, s.level].filter(Boolean).join(" ").replace(/\n/g, " ");
-    confirmBox("같은 과목에 복사", `‘${nm}’ 커리큘럼을 아래 과정의 같은 과목에도 똑같이 적용할까요?\n기존 내용은 덮어씁니다.\n\n${targets.map(([cc]) => "· " + cc.name).join("\n")}`, "복사", () => {
-      targets.forEach(([, ss]) => { S.curr[ss.id] = clone(cur); save("curricula/" + ss.id, S.curr[ss.id]); });
-      toast(`${targets.length}개 과정에 복사했어요`);
-    });
-  }
 };
 function focusLastDay() { setTimeout(() => { const all = document.querySelectorAll('[data-k="day"][data-f="title"]'); all[all.length - 1]?.focus(); }, 20); }
 
@@ -1300,8 +1455,9 @@ const IN = {
   hdrimg(el) { S.roadmap.headerImg = el.checked; saveRoadmap(); render(); },
   rmtitle(el) { S.roadmap.title = el.value; saveRoadmap(); },
   rmtag(el) { S.roadmap.tags[+el.dataset.i] = el.value; saveRoadmap(); },
-  day(el) { const cur = S.curr[S.page.sid]; const d = cur?.days[+el.dataset.i]; if (d) { d[el.dataset.f] = el.value; save("curricula/" + S.page.sid, cur); } },
-  sum(el) { const cur = S.curr[S.page.sid]; if (cur) { cur.summary[el.dataset.f] = el.value; save("curricula/" + S.page.sid, cur); } }
+  day(el) { const cur = curOf(); const d = cur?.days[+el.dataset.i]; if (d) { d[el.dataset.f] = el.value; saveCur(); } },
+  sum(el) { const cur = curOf(); if (cur) { cur.summary[el.dataset.f] = el.value; saveCur(); } },
+  mentor(el) { const cur = curOf(); if (cur) { cur.mentor[el.dataset.f] = el.value; saveCur(); } }
 };
 document.addEventListener("input", e => {
   const k = e.target.dataset?.k;
@@ -1385,9 +1541,17 @@ function prepPrint(which) {
     }
     rmEl.style.width = best.w + "px";
     b.style.setProperty("--rmz", best.z);
+    /* 페이지 가운데에 오도록 위쪽 여백 계산 (배율 적용 전 단위) */
+    const h = rmEl.scrollHeight || 1;
+    b.style.setProperty("--rmmt", Math.max(0, (PAGE_H - h * best.z) / 2 / best.z) + "px");
   }
   const scEl = document.querySelector(".sc");
-  if (scEl) b.style.setProperty("--scz", Math.min(PAGE_W / DESIGN_W, PAGE_H / (scEl.scrollHeight || 1)) * SAFE);
+  if (scEl) {
+    const h = scEl.scrollHeight || 1;
+    const z = Math.min(PAGE_W / DESIGN_W, PAGE_H / h) * SAFE;
+    b.style.setProperty("--scz", z);
+    b.style.setProperty("--scmt", Math.max(0, (PAGE_H - h * z) / 2 / z) + "px");
+  }
   b.style.setProperty("--pgz", PAGE_W / DESIGN_W * SAFE);
   printPrep = { wasEdit };
 }
