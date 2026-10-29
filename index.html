@@ -165,6 +165,14 @@ table.tt{border-collapse:collapse;width:100%;min-width:960px;font-size:12.5px;ma
 .tt td.on{background:var(--cell-on)}
 .tt td input{font-size:11.5px;padding:2px 1px}
 .tt td.on input{font-weight:700;color:var(--rose-d)}
+.tt textarea.cellta{display:block;width:100%;min-height:22px;height:22px;border:1px solid transparent;border-radius:0;background:transparent;padding:3px 2px;font:inherit;font-size:11.5px;line-height:1.3;text-align:center;resize:none;overflow:hidden;white-space:pre-wrap;word-break:keep-all;overflow-wrap:anywhere}
+.tt textarea.cellta:hover{border-color:var(--line);background:var(--field)}
+.tt textarea.cellta:focus{border-color:var(--rose);background:var(--paper);outline:none}
+.tt td.on textarea.cellta{font-weight:700;color:var(--rose-d)}
+.sugg{position:absolute;z-index:40;min-width:200px;max-width:280px;max-height:260px;overflow:auto;background:var(--paper);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px rgba(40,10,30,.18);padding:4px}
+.sugg-h{margin:4px 8px 4px;font-size:11px;color:var(--muted)}
+.sugg button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:7px;font-size:13px}
+.sugg button:hover,.sugg button.on{background:var(--sel);color:var(--rose-d)}
 .tt tr.gstart > *{border-top:2px solid #8f8794}
 .tt .x,.blk .x{border:0;background:var(--blush);color:var(--rose-d);width:18px;height:18px;border-radius:50%;font-size:12px;line-height:18px;padding:0;font-weight:800}
 .tt th .cellx{display:flex;align-items:center;gap:2px;padding-right:3px}
@@ -353,7 +361,8 @@ body.pm .goal.empty-goal,body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,
   .tbl-wrap{overflow:visible}
   .course{break-inside:avoid}
   .blk{break-inside:avoid}
-  input{border-color:transparent!important;background:transparent!important}
+  input,textarea.cellta{border-color:transparent!important;background:transparent!important}
+  input.nodate{color:transparent!important}
   input::placeholder{color:transparent}
   input[type=date]::-webkit-calendar-picker-indicator{display:none}
   .days textarea,.sum textarea{border:0;resize:none}
@@ -721,6 +730,7 @@ function render() {
   renderBar();
   const app = $("#app");
   app.innerHTML = S.page.name === "subject" ? subjectHTML() : S.page.name === "pf" ? pfHTML() : homeHTML();
+  Sugg.hide();
   if (S.page.name === "home") fillDatalist();
   if (!canEdit()) {
     app.querySelectorAll("input:not(#focusChk), textarea").forEach(i => { i.readOnly = true; i.removeAttribute("list"); i.tabIndex = -1; });
@@ -871,7 +881,7 @@ function scheduleHTML() {
       C.months.forEach(m => {
         const key = r.id + "_" + m.id;
         const v = st?.cells?.[key] || "";
-        rows += `<td class="${v ? "on" : ""}"><input data-k="cell" data-key="${esc(key)}" value="${esc(v)}" list="subjlist" aria-label="${esc(g.label + " " + r.label + " " + monthLabel(m))}"></td>`;
+        rows += `<td class="${v ? "on" : ""}"><textarea class="cellta" rows="1" data-k="cell" data-key="${esc(key)}" aria-label="${esc(g.label + " " + r.label + " " + monthLabel(m))}">${esc(v)}</textarea></td>`;
       });
       if (edit) rows += `<td class="no-print"></td>`;
       rows += `</tr>`;
@@ -882,15 +892,15 @@ function scheduleHTML() {
 
   const mths = C.months.map(m => `<th><div class="cellx"><input data-k="month" data-id="${esc(m.id)}" value="${esc(monthLabel(m))}" aria-label="월">${edit ? `<button class="x" data-act="delMonth" data-id="${esc(m.id)}" title="이 열 삭제" aria-label="이 열 삭제">×</button>` : ""}</div></th>`).join("");
 
-  const canBlk = edit || stuScope();
+  const canBlk = edit || (stuScope() && S.scEdit);
   const blocks = blocksNow().map(b => {
     const ws = weekday(b.start), we = weekday(b.end);
     return `<div class="blk"><table>
       <tr><th class="bm" rowspan="3"><input data-k="blk" data-f="label" data-id="${esc(b.id)}" value="${esc(b.label)}" aria-label="학사일정 이름"></th>
           <th colspan="4"><input data-k="blk" data-f="head" data-id="${esc(b.id)}" value="${esc(b.head ?? "강의")}" aria-label="구분"></th></tr>
       <tr><th colspan="2">개강일</th><th colspan="2">종강일</th></tr>
-      <tr><td><input type="date" data-k="blk" data-f="start" data-id="${esc(b.id)}" value="${esc(b.start)}" aria-label="개강일"></td><td class="wd" id="wd-start-${esc(b.id)}">${ws}</td>
-          <td><input type="date" data-k="blk" data-f="end" data-id="${esc(b.id)}" value="${esc(b.end)}" aria-label="종강일"></td><td class="wd" id="wd-end-${esc(b.id)}">${we}</td></tr>
+      <tr><td><input type="date"${b.start ? "" : ' class="nodate"'} data-k="blk" data-f="start" data-id="${esc(b.id)}" value="${esc(b.start)}" aria-label="개강일"></td><td class="wd" id="wd-start-${esc(b.id)}">${ws}</td>
+          <td><input type="date"${b.end ? "" : ' class="nodate"'} data-k="blk" data-f="end" data-id="${esc(b.id)}" value="${esc(b.end)}" aria-label="종강일"></td><td class="wd" id="wd-end-${esc(b.id)}">${we}</td></tr>
       <tr><td colspan="5"><input class="memo" data-k="blk" data-f="memo" data-id="${esc(b.id)}" value="${esc(b.memo)}" placeholder="메모 (비워 두면 출력 시 빈칸)" aria-label="메모"></td></tr>
     </table>${canBlk ? `<button class="x no-print" data-act="delBlock" data-id="${esc(b.id)}" title="학사일정 삭제" aria-label="학사일정 삭제">×</button>` : ""}</div>`;
   }).join("");
@@ -914,7 +924,9 @@ function scheduleHTML() {
     <div class="acad-title"><input data-k="acadTitle" value="${esc(acadNow())}" aria-label="학사일정 제목"></div>
     <div class="blocks">${blocks}</div>
     ${edit ? `<div class="row-btns no-print" style="padding:0 16px"><button class="btn sm" data-act="addBlock">+ 학사일정 추가</button><button class="btn sm danger" data-act="resetSchedule">기본 일정표로 되돌리기</button></div>`
-      : stuScope() ? `<div class="row-btns no-print" style="padding:0 16px"><button class="btn sm" data-act="addBlock">+ 학사일정 추가</button>${own ? `<button class="btn sm danger" data-act="resetStuSchedule">이 수강생 일정을 기본으로 되돌리기</button>` : ""}</div>` : ""}
+      : stuScope() ? `<div class="row-btns no-print" style="padding:0 16px">${S.scEdit
+          ? `<button class="btn sm" data-act="addBlock">+ 학사일정 추가</button>${own ? `<button class="btn sm danger" data-act="resetStuSchedule">이 수강생 일정을 기본으로 되돌리기</button>` : ""}<button class="btn sm rose" data-act="scEdit">✓ 학사일정 편집 완료</button>`
+          : `<button class="btn sm" data-act="scEdit">✏️ 학사일정 칸 추가·삭제</button>`}</div>` : ""}
   </section>`;
 }
 
@@ -929,16 +941,75 @@ function monthNum(v) {
   const n = +m[1];
   return n >= 1 && n <= 12 ? n : 0;
 }
-function fillDatalist() {
-  const dl = $("#subjlist");
-  if (!dl || !S.roadmap) return;
-  const sel = selSet();
-  const names = [];
-  S.roadmap.courses.forEach(c => c.subjects.forEach(s => {
-    if (sel.has(s.id)) { const nm = [s.name, s.level].filter(Boolean).join(" ").replace(/\n/g, " "); if (!names.includes(nm)) names.push(nm); }
-  }));
-  dl.innerHTML = names.map(n => `<option value="${esc(n)}"></option>`).join("");
+/* 시간표 칸 추천 목록: 체크한 과목의 ‘수업일정표 항목’(없으면 과목명 단계) */
+function schedItems(s) {
+  if (s.sched && s.sched.trim()) return s.sched.split(",").map(x => x.trim()).filter(Boolean);
+  return [[s.name, s.level].filter(Boolean).join(" ").replace(/\n/g, " ")];
 }
+function suggestNames() {
+  if (!S.roadmap) return [];
+  const sel = selSet(), names = [];
+  S.roadmap.courses.forEach(c => c.subjects.forEach(s => {
+    if (s.kind === "pf" || !sel.has(s.id)) return;
+    schedItems(s).forEach(n => { if (!names.includes(n)) names.push(n); });
+  }));
+  return names;
+}
+function fillDatalist() { autosizeCells(); }
+function autosizeCells(root = document) {
+  root.querySelectorAll("textarea.cellta").forEach(t => { t.style.height = "auto"; t.style.height = Math.max(22, t.scrollHeight) + "px"; });
+}
+/* 시간표 칸 추천 목록 팝업 (직접 입력도 가능) */
+const Sugg = {
+  el: null, input: null, items: [], idx: -1,
+  ensure() {
+    if (this.el) return;
+    this.el = document.createElement("div"); this.el.className = "sugg no-print"; this.el.setAttribute("role", "listbox"); this.el.hidden = true;
+    document.body.appendChild(this.el);
+    this.el.addEventListener("mousedown", e => { const b = e.target.closest("[data-v]"); if (b) { e.preventDefault(); this.pick(b.dataset.v); } });
+  },
+  open(input) {
+    if (input.readOnly) return;
+    this.ensure(); this.input = input; this.update();
+  },
+  update() {
+    if (!this.input) return;
+    const q = this.input.value.trim().toLowerCase();
+    const all = suggestNames();
+    this.items = q ? all.filter(n => n.toLowerCase().includes(q) && n.toLowerCase() !== q) : all;
+    this.idx = -1;
+    if (!this.items.length) { this.hide(); return; }
+    this.el.innerHTML = `<p class="sugg-h">체크한 과목 (직접 입력해도 돼요)</p>` + this.items.map((n, i) => `<button type="button" role="option" data-v="${esc(n)}" data-i="${i}">${esc(n)}</button>`).join("");
+    const r = this.input.getBoundingClientRect();
+    this.el.style.left = Math.min(window.innerWidth - 240, Math.max(4, r.left + window.scrollX)) + "px";
+    this.el.style.top = (r.bottom + window.scrollY + 2) + "px";
+    this.el.hidden = false;
+  },
+  move(d) {
+    if (this.el?.hidden || !this.items.length) return false;
+    this.idx = (this.idx + d + this.items.length) % this.items.length;
+    this.el.querySelectorAll("[data-i]").forEach(b => b.classList.toggle("on", +b.dataset.i === this.idx));
+    return true;
+  },
+  pick(v) {
+    const t = this.input; if (!t) return;
+    t.value = v; t.dispatchEvent(new Event("input", { bubbles: true })); this.hide(); t.focus();
+  },
+  hide() { if (this.el) this.el.hidden = true; this.idx = -1; }
+};
+document.addEventListener("focusin", e => { if (e.target.matches?.("textarea.cellta")) Sugg.open(e.target); });
+document.addEventListener("focusout", e => { if (e.target.matches?.("textarea.cellta")) setTimeout(() => { if (document.activeElement !== Sugg.input) Sugg.hide(); }, 100); });
+document.addEventListener("keydown", e => {
+  if (!e.target.matches?.("textarea.cellta")) return;
+  if (e.key === "ArrowDown" && Sugg.move(1)) e.preventDefault();
+  else if (e.key === "ArrowUp" && Sugg.move(-1)) e.preventDefault();
+  else if (e.key === "Escape") Sugg.hide();
+  else if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    if (Sugg.idx >= 0 && !Sugg.el.hidden) Sugg.pick(Sugg.items[Sugg.idx]); else { Sugg.hide(); e.target.blur(); }
+  }
+});
+window.addEventListener("scroll", () => { if (Sugg.el && !Sugg.el.hidden && Sugg.input) { const r = Sugg.input.getBoundingClientRect(); Sugg.el.style.top = (r.bottom + window.scrollY + 2) + "px"; } }, { passive: true });
 
 /* ---------- 과목 상세 ---------- */
 const SUMF = [["intro", "과목 소개"], ["goal", "학습 목표"], ["content", "주요 학습 내용"], ["result", "완성 결과물"], ["period", "수업 기간·시간"]];
@@ -1385,6 +1456,7 @@ function editSubject(c, s) {
       o.level = box.querySelector("#f-level").value.trim();
       o.note = box.querySelector("#f-note").value.trim();
       o.br = box.querySelector("#f-br").checked;
+      o.sched = box.querySelector("#f-sched").value.split(/[,\n]/).map(x => x.trim()).filter(Boolean).join(", ");
       if (isNew) c.subjects.push(o);
       saveRoadmap(); render();
       /* 과목명을 바꿨을 때, 새 이름의 커리큘럼이 없으면 기존 커리큘럼을 이어서 사용 */
@@ -1402,6 +1474,7 @@ function editSubject(c, s) {
     body: `<label>과목명<textarea id="f-name" rows="2">${esc(v.name)}</textarea><span class="help">줄을 바꾸면 로드맵에서도 두 줄로 보여요.</span></label>
       <label>단계·회차<input type="text" id="f-level" value="${esc(v.level)}" placeholder="예: 1~2, 1~6"></label>
       <label>작은 설명<input type="text" id="f-note" value="${esc(v.note)}" placeholder="예: 발상과 표현, 색채학"></label>
+      <label>수업일정표 항목<input type="text" id="f-sched" value="${esc(v.sched || "")}" placeholder="예: 유크리 1, 유크리 2"><span class="help">시간표 칸에 넣을 <b>한 달 단위</b> 수업 이름을 쉼표(,)로 나눠 적어요. 1~2가 한 달이면 비워 두세요(‘과목명 단계’ 한 개로 나와요).</span></label>
       <label class="chk"><input type="checkbox" id="f-br"${v.br ? " checked" : ""}> 이 과목부터 다음 줄(갈래)로 표시</label>`,
     actions
   });
@@ -1498,8 +1571,9 @@ const ACT = {
       title: "무엇을 출력할까요?",
       body: `<p class="msg">A4 가로 한 장에 맞춰 출력됩니다.${hasSc ? "\n‘둘 다’를 고르면 로드맵 1장과 수업일정표 1장이 나옵니다." : ""}</p>`,
       actions: [{ label: "취소" }, { label: "로드맵만", cls: hasSc ? "" : "pri", fn: () => { setTimeout(() => doPrint("rm"), 50); } }]
-        .concat(hasSc ? [{ label: "수업일정표만", fn: () => { setTimeout(() => doPrint("sc"), 50); } }, { label: "둘 다", cls: "pri", fn: () => { setTimeout(() => doPrint("both"), 50); } }] : [])
+        .concat(hasSc ? [{ label: "수업일정표만", fn: () => { setTimeout(() => doPrint("sc"), 50); } }, { label: "둘 다 (기본)", cls: "pri", fn: () => { setTimeout(() => doPrint("both"), 50); } }] : [])
     });
+    setTimeout(() => $("#modal .ma button:last-child")?.focus(), 40);
   },
   mode(el) { const m = el.dataset.m; if (m === "edit" && !canAdmin()) return; S.mode = m; render(); },
   subj(el) {
@@ -1623,6 +1697,7 @@ const ACT = {
       render();
     });
   },
+  scEdit() { S.scEdit = !S.scEdit; render(); },
   resetStuSchedule() {
     const st = S.cur; if (!st || !stuScope()) return;
     confirmBox("기본 일정으로 되돌리기", `${st.name || "이 수강생"} 님의 월·개강/종강 일정을 기본 일정표로 되돌릴까요?\n시간표 칸에 적은 내용은 그대로 남아요.`, "되돌리기", () => {
@@ -1731,6 +1806,7 @@ document.addEventListener("change", e => {
     pickVisible(lsGet("pref:student"));
     render();
   } else if (e.target.id === "stuSel") {
+    S.scEdit = false;
     S.cur = S.students.find(s => s.id === e.target.value) || null;
     if (S.cur) lsSet("pref:student", S.cur.id);
     render();
@@ -1755,6 +1831,8 @@ const IN = {
     const v = el.value;
     if (v.trim()) st.cells[el.dataset.key] = v; else delete st.cells[el.dataset.key];
     el.parentElement.classList.toggle("on", !!v.trim());
+    el.style.height = "auto"; el.style.height = Math.max(22, el.scrollHeight) + "px";
+    Sugg.update();
     patchStudent({ cells: { [el.dataset.key]: v.trim() ? v : DEL } });
     if (!$("#stuSel")?.querySelector(`option[value="${CSS.escape(st.id)}"]`)) renderBar();
   },
@@ -1782,6 +1860,7 @@ const IN = {
     if (!L) return;
     const b = L.find(x => x.id === el.dataset.id); if (!b) return;
     const f = el.dataset.f; b[f] = el.value;
+    if (el.type === "date") el.classList.toggle("nodate", !el.value);
     if (tplMode()) saveSchedule(); else patchStudent({ blocks: clone(L) });
     if (f === "start" || f === "end") { const w = document.getElementById(`wd-${f}-${b.id}`); if (w) w.textContent = weekday(el.value); }
   },
@@ -1877,28 +1956,31 @@ function prepPrint(which) {
   const b = document.body;
   b.dataset.print = which;
   b.classList.add("pm");
+  autosizeCells();
   const SAFE = 0.96;
+  /* 출력 시 글자 렌더링 차이로 높이가 몇 % 늘어나는 것을 감안 */
+  const GROW = 1.07;
+  const fitZ = (w, h) => Math.min(PAGE_W / w * 0.98, PAGE_H * SAFE / (h * GROW));
+  const topM = (h, z) => Math.max(0, (PAGE_H - h * 1.035 * z) / 2) / z + "px";
   const rmEl = document.querySelector(".rm");
   if (rmEl) {
     /* 가로 폭을 바꿔 보며 한 장에 가장 크게 들어가는 폭을 고름 */
     let best = { z: 0, w: DESIGN_W };
     for (let w = 1300; w <= 2200; w += 100) {
       rmEl.style.width = w + "px";
-      const z = Math.min(PAGE_W / w, PAGE_H / (rmEl.scrollHeight || 1)) * SAFE;
+      const z = fitZ(w, rmEl.scrollHeight || 1);
       if (z > best.z) best = { z, w };
     }
     rmEl.style.width = best.w + "px";
     b.style.setProperty("--rmz", best.z);
-    /* 페이지 가운데에 오도록 위쪽 여백 계산 (배율 적용 전 단위) */
-    const h = rmEl.scrollHeight || 1;
-    b.style.setProperty("--rmmt", Math.max(0, (PAGE_H - h * best.z) / 2 / best.z) + "px");
+    b.style.setProperty("--rmmt", topM(rmEl.scrollHeight || 1, best.z));
   }
   const scEl = document.querySelector(".sc");
   if (scEl) {
     const h = scEl.scrollHeight || 1;
-    const z = Math.min(PAGE_W / DESIGN_W, PAGE_H / h) * SAFE;
+    const z = fitZ(DESIGN_W, h);
     b.style.setProperty("--scz", z);
-    b.style.setProperty("--scmt", Math.max(0, (PAGE_H - h * z) / 2 / z) + "px");
+    b.style.setProperty("--scmt", topM(h, z));
   }
   b.style.setProperty("--pgz", PAGE_W / DESIGN_W * SAFE);
   printPrep = { wasEdit };
