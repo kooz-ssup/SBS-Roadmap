@@ -274,6 +274,12 @@ input.pf-cap{width:calc(100% - 24px);border:1px solid var(--line);border-radius:
 .ex textarea.exta:focus{outline:none;border-color:var(--rose);border-style:solid;background:#fff}
 .ex textarea.exta::placeholder{color:#b9b0b8;font-size:12px}
 .ex textarea.exta.c,.ex textarea.exta.lab{text-align:center}
+.ex-tools{display:flex;justify-content:flex-end;gap:8px;margin-bottom:10px}
+.tpl-list{display:grid;gap:8px;max-height:50vh;overflow:auto}
+.tpl-row{display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.tpl-row b{display:block;font-size:14px}
+.tpl-row small{color:var(--muted);font-size:12px}
+.tpl-row > span{white-space:nowrap}
 .ex-title{border:1.5px solid #222;border-bottom:0;background:#d9d9d9;padding:10px 8px}
 .ex-title textarea.exta{font-size:24px;font-weight:700;text-align:center}
 table.ex-t{border-collapse:collapse;width:100%;font-size:15px;table-layout:fixed;background:#fff}
@@ -612,6 +618,12 @@ const Store = {
     if (this.local) return lsGet(path);
     try { const s = await this.m.getDoc(this.ref(path)); return s.exists() ? s.data() : null; }
     catch (e) { console.error(e); return null; }
+  },
+  async listCol(name) {
+    if (this.local) return lsKeys(name + "/").map(k => Object.assign(lsGet(k) || {}, { id: k.split("/")[1] }));
+    if (!this.staff) return [];
+    try { const q = await this.m.getDocs(this.m.collection(this.fs, name)); return q.docs.map(d => Object.assign(d.data(), { id: d.id })); }
+    catch (e) { console.error(e); return []; }
   },
   async listStudents() {
     if (this.local) return lsKeys("students/").map(k => lsGet(k)).filter(Boolean);
@@ -1444,8 +1456,9 @@ function exploreHTML() {
     const labCell = r.g ? `<th>${lab}</th>` : `<th colspan="2">${lab}</th>`;
     rows += `<tr>${first}${labCell}<td colspan="3">${exTA("v", r.k, exVal(r.k, r.def || ""), r.ph)}</td></tr>`;
   });
+  const tools = exCanEdit() ? `<div class="ex-tools no-print"><button class="btn sm" data-act="tplLoad">📂 템플릿 불러오기</button><button class="btn sm" data-act="tplSave">💾 템플릿으로 저장</button></div>` : "";
   return `<section class="sheet ex${S.showEx ? "" : " ex-off"}" id="exSec">
-    <div class="ex-page">
+    <div class="ex-page">${tools}
       <div class="ex-title">${exTA("title", "title", d.title !== undefined ? d.title : EX_TITLE, "", "c")}</div>
       <table class="ex-t"><colgroup><col style="width:11%"><col style="width:21%"><col style="width:32%"><col style="width:14%"><col style="width:22%"></colgroup>
         <tbody>${rows}</tbody></table>
@@ -1462,6 +1475,103 @@ function homeActions() {
     ${showExBtn || (canEdit() && !S.studentView) ? `<button class="btn lg" data-act="exToggle">${exLabel}</button>` : ""}
     <button class="btn lg pri" data-act="print">🖨 출력</button>
   </div>`;
+}
+
+/* ---------- 탐색표 템플릿 (직원마다 저장, 관리자는 공용으로도 저장 가능) ---------- */
+S.tpls = null;
+const TPL_AUTO = ["subjects", "result", "job", "trait", "duty", "certName", "certInfo", "certHow"];
+const TPL_AUTO_NAMES = "주요 교과목 및 내용, 훈련성과, 직업명, 요구되는 특성, 주요 업무, 자격증명, 자격증 개요, 취득 방법";
+const normName = s => String(s || "").replace(/\s+/g, "").toLowerCase();
+async function loadTpls(force) {
+  if (S.tpls && !force) return S.tpls;
+  const list = await Store.listCol("extpl");
+  const me = myEmail();
+  S.tpls = list.filter(t => Store.local || t.owner === me || t.shared)
+    .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  return S.tpls;
+}
+function tplLabel(t) {
+  const mine = Store.local || t.owner === myEmail();
+  return `${t.name}${t.shared ? " · 공용" : ""}${mine ? "" : ` (${t.ownerName || "관리자"})`}`;
+}
+function applyTpl(t, keys) {
+  const st = S.cur; if (!st || !exCanEdit()) return;
+  st.explore = st.explore || {};
+  const v = {}, l = {};
+  Object.entries(t.v || {}).forEach(([k, x]) => { if ((!keys || keys.includes(k)) && (x || "").trim()) v[k] = x; });
+  if (!keys) Object.entries(t.l || {}).forEach(([k, x]) => { l[k] = x; });
+  st.explore.v = Object.assign(st.explore.v || {}, v);
+  if (!keys) st.explore.l = Object.assign(st.explore.l || {}, l);
+  const part = { v };
+  if (!keys && Object.keys(l).length) part.l = l;
+  if (!keys && typeof t.title === "string") { st.explore.title = t.title; part.title = t.title; }
+  patchStudent({ explore: part });
+  render();
+  setTimeout(autosizeCells, 30);
+  toast(`‘${t.name}’ 템플릿 내용을 넣었어요`);
+}
+async function saveTplFlow() {
+  if (!exCanEdit()) return;
+  const d = exData();
+  const course = exVal("course") || "";
+  await loadTpls();
+  modal({
+    title: "탐색표 템플릿으로 저장",
+    body: `<label>템플릿 이름<input type="text" id="f-tn" value="${esc(course)}" placeholder="예: 웹 / 마케팅"><span class="help">이름을 훈련과정명과 같게 해 두면, 다른 학생의 탐색표에 훈련과정명을 넣을 때 자동으로 불러올지 물어봐요.</span></label>
+      ${Store.admin ? `<label class="chk"><input type="checkbox" id="f-tshare"> 공용 템플릿 (모든 직원이 불러올 수 있어요)</label>` : ""}
+      <p class="help">지금 탐색표에 적힌 내용이 모두 저장돼요. 학생마다 다른 칸(훈련기간 등)은 불러온 뒤 고치면 됩니다.</p>`,
+    actions: [{ label: "취소" }, {
+      label: "저장", cls: "pri", fn: box => {
+        const name = box.querySelector("#f-tn").value.trim();
+        if (!name) { toast("템플릿 이름을 입력하세요"); return false; }
+        const shared = !!box.querySelector("#f-tshare")?.checked;
+        const me = myEmail() || "local";
+        const same = (S.tpls || []).find(t => (Store.local || t.owner === me) && normName(t.name) === normName(name));
+        const doSave = async () => {
+          const id = same ? same.id : uid("t");
+          const data = { owner: me, ownerName: Store.user?.displayName || "", shared, name, course: exVal("course") || "", title: d.title !== undefined ? d.title : EX_TITLE, v: clone(d.v), l: clone(d.l), updatedAt: Date.now() };
+          try {
+            if (Store.local) lsSet("extpl/" + id, data); else await Store.set("extpl/" + id, data);
+            S.tpls = null; await loadTpls(true);
+            toast(same ? "템플릿을 새 내용으로 바꿨어요" : "템플릿으로 저장했어요");
+          } catch (e) { toast(errMsg(e)); }
+        };
+        if (same) { setTimeout(() => confirmBox("같은 이름의 템플릿이 있어요", `‘${name}’ 템플릿을 지금 내용으로 바꿀까요?`, "바꾸기", doSave), 0); return; }
+        doSave();
+      }
+    }]
+  });
+}
+async function loadTplFlow() {
+  if (!exCanEdit()) return;
+  const list = await loadTpls(true);
+  if (!list.length) { toast("저장된 템플릿이 없어요. 먼저 [템플릿으로 저장]을 해 주세요"); return; }
+  const me = myEmail() || "local";
+  const box = modal({
+    title: "탐색표 템플릿 불러오기",
+    body: `<p class="help">불러오면 템플릿에 적힌 칸이 지금 탐색표에 덮어써져요. 비어 있는 칸은 그대로 둡니다.</p>
+      <div class="tpl-list">${list.map((t, i) => `<div class="tpl-row"><div><b>${esc(tplLabel(t))}</b><small>${esc(t.course || "")}</small></div>
+        <span><button class="btn sm pri" data-ti="${i}">불러오기</button>${(Store.local || t.owner === me || Store.admin) ? ` <button class="btn sm danger" data-td="${i}">삭제</button>` : ""}</span></div>`).join("")}</div>`,
+    actions: [{ label: "닫기" }]
+  });
+  box.querySelectorAll("[data-ti]").forEach(b => b.addEventListener("click", () => { const t = list[+b.dataset.ti]; box.innerHTML = ""; applyTpl(t); }));
+  box.querySelectorAll("[data-td]").forEach(b => b.addEventListener("click", () => {
+    const t = list[+b.dataset.td]; box.innerHTML = "";
+    confirmBox("템플릿 삭제", `‘${t.name}’ 템플릿을 삭제할까요?\n이미 작성한 학생 탐색표는 그대로 남아요.`, "삭제", async () => {
+      await removeDoc("extpl/" + t.id); S.tpls = null; toast("삭제했어요");
+    });
+  }));
+}
+/* 훈련과정명을 넣으면 같은 이름의 템플릿에서 주요 항목 자동 기입 */
+async function courseAutoFill(value) {
+  if (!exCanEdit() || !value.trim()) return;
+  const list = await loadTpls();
+  const n = normName(value);
+  const t = list.find(x => normName(x.course) === n) || list.find(x => normName(x.name) === n);
+  if (!t) return;
+  const has = TPL_AUTO.filter(k => (t.v?.[k] || "").trim());
+  if (!has.length) return;
+  confirmBox("템플릿 내용 자동 기입", `‘${t.name}’ 템플릿이 있어요.\n${TPL_AUTO_NAMES} 칸을 템플릿 내용으로 채울까요?`, "채우기", () => applyTpl(t, TPL_AUTO));
 }
 
 /* ---------- 학생 목표 ---------- */
@@ -1779,6 +1889,8 @@ const ACT = {
     });
     setTimeout(() => $("#modal .ma button:last-child")?.focus(), 40);
   },
+  tplSave() { saveTplFlow(); },
+  tplLoad() { loadTplFlow(); },
   exToggle() {
     if (!S.cur) { if (canEdit()) ACT.newStudent(); else toast("수강생 정보가 없어요"); return; }
     S.showEx = !S.showEx; render();
@@ -2015,6 +2127,7 @@ document.addEventListener("change", e => {
     return;
   }
   if (e.target.dataset?.k === "blk" && e.target.dataset.f === "start" && tplMode()) { render(); return; }
+  if (e.target.dataset?.k === "ex" && e.target.dataset.key === "course" && e.target.dataset.f === "v") { courseAutoFill(e.target.value); return; }
   if (e.target.id === "scopeSel") {
     S.showAll = e.target.value === "all"; lsSet("pref:showAll", S.showAll);
     pickVisible(lsGet("pref:student"));
@@ -2276,7 +2389,7 @@ async function loadAll() {
   if (LINK_ID && !S.cur && Store.admin) { const st = S.students.find(s => s.id === LINK_ID); if (st) { S.showAll = true; S.cur = st; } }
 }
 async function onAuthChange() {
-  S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {}; S.mentor = {}; S.mentorEdit = false;
+  S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {}; S.mentor = {}; S.mentorEdit = false; S.tpls = null;
   $("#app").innerHTML = `<div class="loading">불러오는 중…</div>`;
   await loadAll();
   render();
