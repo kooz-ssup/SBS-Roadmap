@@ -883,6 +883,12 @@ function scheduleHTML() {
   </section>`;
 }
 
+function monthNum(v) {
+  const m = /^\s*(\d{1,2})\s*(월)?\s*$/.exec(v || "");
+  if (!m) return 0;
+  const n = +m[1];
+  return n >= 1 && n <= 12 ? n : 0;
+}
 function fillDatalist() {
   const dl = $("#subjlist");
   if (!dl || !S.roadmap) return;
@@ -942,7 +948,7 @@ function subjectHTML() {
   if (!s) return `<section class="sheet"><div class="empty"><p>이 과목을 찾을 수 없어요. 삭제되었을 수 있습니다.</p><div class="btns"><button class="btn pri" data-act="home">홈으로</button></div></div></section>`;
   const cur = S.curr[subjKey(s)];
   if (cur === undefined) { loadCurr(s); return `<section class="sheet"><div class="loading">커리큘럼 불러오는 중…</div></section>`; }
-  const tab = S.tab || cur.mode || "daily";
+  const tab = S.tab || "summary"; /* 요약 커리큘럼을 먼저 보여줌 */
   const ed = S.subjEdit && canAdmin();
   const selNow = selSet();
   const navList = S.studentView ? c.subjects.filter(x => selNow.has(x.id)) : c.subjects;
@@ -1005,8 +1011,8 @@ function subjectHTML() {
       ${s.note ? `<p class="nt">${esc(s.note)}</p>` : ""}
       ${sharedNote}
       <div class="tabs" role="tablist">
-        <button role="tab" data-act="tab" data-t="daily" aria-selected="${tab === "daily"}">일자별 커리큘럼${cur.days.length ? ` (${cur.days.length})` : ""}</button>
         <button role="tab" data-act="tab" data-t="summary" aria-selected="${tab === "summary"}">요약 커리큘럼${(cur.summaryImgs || []).length ? ` (${cur.summaryImgs.length})` : ""}</button>
+        <button role="tab" data-act="tab" data-t="daily" aria-selected="${tab === "daily"}">일자별 커리큘럼${cur.days.length ? ` (${cur.days.length})` : ""}</button>
       </div>
     </div>
     <div class="sp-body">${body}${mentor}</div>
@@ -1458,12 +1464,7 @@ const ACT = {
   },
   goSubj(el) { go({ name: "subject", cid: el.dataset.c, sid: el.dataset.s }); },
   subjEdit() { S.subjEdit = !S.subjEdit; render(); },
-  tab(el) {
-    S.tab = el.dataset.t;
-    const cur = curOf();
-    if (cur && cur.mode !== S.tab) { cur.mode = S.tab; saveCur(); }
-    render();
-  },
+  tab(el) { S.tab = el.dataset.t; render(); },
   dayAdd() { const cur = curOf(); cur.days.push({ id: uid("d"), title: "", content: "", note: "" }); saveCur(); render(); focusLastDay(); },
   mentorEdit() { if (!canEdit()) return; S.mentorEdit = !S.mentorEdit; render(); },
   imgMove(el) {
@@ -1519,6 +1520,16 @@ document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches('.clabel[role="button"]')) { e.preventDefault(); ACT.course(e.target); }
 });
 document.addEventListener("change", e => {
+  if (e.target.dataset?.k === "month" && canAdmin()) {
+    /* 월 입력 정리: 숫자만 넣어도 ‘9월’로, 뒤 칸은 10월·11월…로 자동 채움 */
+    const L = S.schedule.months, i = L.findIndex(x => x.id === e.target.dataset.id);
+    const n = monthNum(e.target.value);
+    if (i >= 0 && n) {
+      for (let j = i; j < L.length; j++) L[j].label = (((n - 1 + (j - i)) % 12) + 1) + "월";
+      saveSchedule(); render();
+    }
+    return;
+  }
   if (e.target.id === "scopeSel") {
     S.showAll = e.target.value === "all"; lsSet("pref:showAll", S.showAll);
     pickVisible(lsGet("pref:student"));
