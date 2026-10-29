@@ -227,6 +227,26 @@ table.days{border-collapse:collapse;width:100%;font-size:14px}
 .subj.locked:hover{background:none}
 .mentor .mine{font-size:12px;font-weight:600;color:var(--muted)}
 .mentor.empty-m{background:var(--field);border-style:dashed;border-color:var(--line)}
+.subj.pf .nm{color:var(--navy)}
+.pf-ic{margin-right:2px}
+.rm.focus .subj.pf{opacity:1}
+.pf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
+.pf-item{margin:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--paper);display:flex;flex-direction:column}
+.pf-item img{display:block;width:100%;height:auto;background:#fff}
+.pf-item.wide{grid-column:span 2}
+.pf-video{position:relative;padding-top:56.25%;background:#000}
+.pf-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.pf-item.link a{display:flex;gap:12px;align-items:center;padding:16px;text-decoration:none;color:var(--ink)}
+.pf-item.link a:hover{background:var(--field)}
+.pf-link-ic{font-size:26px}
+.pf-item.link b{display:block}
+.pf-item small,.pf-url{display:block;color:var(--muted);font-size:12px;word-break:break-all}
+.pf-url{padding:0 12px 10px;text-decoration:none}
+.pf-cap{margin:8px 12px;font-size:13px;color:var(--ink)}
+input.pf-cap{width:calc(100% - 24px);border:1px solid var(--line);border-radius:7px;padding:6px 8px;background:var(--field)}
+.pf-op{display:flex;gap:6px;padding:0 12px 12px;flex-wrap:wrap}
+@media screen and (max-width:620px){.pf-item.wide{grid-column:auto}}
+.tpl-note{margin:0;padding:10px 16px;background:var(--field);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);text-align:center}
 .shared{margin:8px 0 0;font-size:13px;color:var(--muted)}
 .simgs{display:grid;gap:16px}
 .simg{margin:0;position:relative}
@@ -558,7 +578,11 @@ const Store = {
 /* canEdit: 수강생 체크·일정 입력 가능 (직원 이상) / canAdmin: 로드맵·커리큘럼·학사일정 수정 가능 (관리자) */
 const canEdit = () => Store.local ? !Store.failed : Store.staff;
 const canAdmin = () => Store.local ? !Store.failed : (Store.staff && Store.admin);
-const STUDENT_KEYS = new Set(["sname", "cell", "goal", "mymentor"]);
+const STUDENT_KEYS = new Set(["sname", "cell", "goal", "mymentor", "pfcap"]);
+/* 월·학사일정: 관리자 [편집] 모드에서는 기본 일정표, 그 밖에는 선택한 수강생의 일정 */
+const SCOPED_KEYS = new Set(["month", "blk", "acadTitle"]);
+const tplMode = () => canAdmin() && S.mode === "edit";
+const stuScope = () => !tplMode() && !!S.cur && canEdit();
 
 const pending = {}, timers = {}, busy = {};
 let saveState = "idle";
@@ -696,18 +720,18 @@ function iconHTML(icon, cls = "cicon") {
 function render() {
   renderBar();
   const app = $("#app");
-  app.innerHTML = S.page.name === "subject" ? subjectHTML() : homeHTML();
+  app.innerHTML = S.page.name === "subject" ? subjectHTML() : S.page.name === "pf" ? pfHTML() : homeHTML();
   if (S.page.name === "home") fillDatalist();
   if (!canEdit()) {
     app.querySelectorAll("input:not(#focusChk), textarea").forEach(i => { i.readOnly = true; i.removeAttribute("list"); i.tabIndex = -1; });
     app.querySelectorAll('input[type="date"]').forEach(i => { i.type = "text"; });
-  } else if (!canAdmin()) {
-    /* 직원: 수강생 이름·시간표 칸만 입력 가능 */
+  } else {
+    /* 직원: 수강생 관련 칸만 입력 가능 / 월·학사일정은 수강생을 골랐을 때 그 수강생 것으로 수정 */
+    const lock = i => { i.readOnly = true; i.tabIndex = -1; if (i.type === "date") i.type = "text"; if (i.type === "checkbox") i.disabled = true; };
     app.querySelectorAll("input[data-k], textarea[data-k]").forEach(i => {
-      if (STUDENT_KEYS.has(i.dataset.k)) return;
-      i.readOnly = true; i.tabIndex = -1;
-      if (i.type === "date") i.type = "text";
-      if (i.type === "checkbox") i.disabled = true;
+      const k = i.dataset.k;
+      if (SCOPED_KEYS.has(k)) { if (!tplMode() && !S.cur) lock(i); return; }
+      if (!canAdmin() && !STUDENT_KEYS.has(k)) lock(i);
     });
   }
 }
@@ -758,6 +782,9 @@ function renderBar() {
     hint.hidden = !msg;
     hint.className = "hint" + (S.mode === "edit" ? " edit" : "");
     hint.innerHTML = msg ? `<p>${msg}</p>` : "";
+  } else if (S.page.name === "pf") {
+    ctx.innerHTML = pfCanEdit() ? `<span class="spacer"></span><button class="btn ${S.pfEdit ? "rose" : ""}" data-act="pfEdit">${S.pfEdit ? "✓ 편집 완료" : "✏️ 포폴 편집"}</button>` : "";
+    hint.hidden = true;
   } else {
     ctx.innerHTML = !canAdmin() ? "" : `<span class="spacer"></span>
       <button class="btn ${S.subjEdit ? "rose" : ""}" data-act="subjEdit">${S.subjEdit ? "✓ 수정 완료" : "✏️ 커리큘럼 수정"}</button>`;
@@ -804,14 +831,16 @@ function courseHTML(c, ci, sel, edit) {
     if (s.br && i > 0) items += `<span class="brk"></span><span class="indent" aria-hidden="true"></span>`;
     const t = n > 1 ? i / (n - 1) : 1;
     const label = [s.name, s.level].filter(Boolean).join(" ").replace(/\n/g, " ");
-    const locked = S.studentView && !on;
-    items += `<button type="button" class="subj${on ? " sel" : ""}${jl ? " jl" : ""}${jr ? " jr" : ""}${locked ? " locked" : ""}"${locked ? ' aria-disabled="true"' : ""} data-act="subj" data-c="${esc(c.id)}" data-s="${esc(s.id)}" style="--bar:${mixColor(t)}" aria-pressed="${sel.has(s.id)}" aria-label="${esc(label)}">`
-      + `<span class="bar"></span><span class="nm">${esc(s.name)}</span>`
+    const pf = s.kind === "pf";
+    const locked = S.studentView && !on && !pf;
+    items += `<button type="button" class="subj${pf ? " pf" : ""}${on ? " sel" : ""}${jl ? " jl" : ""}${jr ? " jr" : ""}${locked ? " locked" : ""}"${locked ? ' aria-disabled="true"' : ""} data-act="subj" data-c="${esc(c.id)}" data-s="${esc(s.id)}" style="--bar:${mixColor(t)}" aria-pressed="${sel.has(s.id)}" aria-label="${esc(label)}">`
+      + `<span class="bar"></span><span class="nm">${pf ? '<span class="pf-ic" aria-hidden="true">📁</span>' : ""}${esc(s.name)}</span>`
       + (s.level ? `<span class="lv">${esc(s.level)}</span>` : "")
       + (s.note ? `<span class="nt">${esc(s.note)}</span>` : "")
       + `<span class="ck" aria-hidden="true">✓</span></button>`;
   });
-  if (edit) items += `<button type="button" class="subj add" data-act="addSubj" data-c="${esc(c.id)}"><span class="nm">+ 과목</span></button>`;
+  if (edit) items += `<button type="button" class="subj add" data-act="addSubj" data-c="${esc(c.id)}"><span class="nm">+ 과목</span></button>`
+    + `<button type="button" class="subj add" data-act="addPf" data-c="${esc(c.id)}"><span class="nm">+ 수강생포폴</span></button>`;
   const clickable = S.mode !== "view";
   const ctrl = edit ? `<div class="cctrl">
       <button data-act="cMove" data-c="${esc(c.id)}" data-d="-1" title="위로" aria-label="위로">▲</button>
@@ -842,7 +871,7 @@ function scheduleHTML() {
       C.months.forEach(m => {
         const key = r.id + "_" + m.id;
         const v = st?.cells?.[key] || "";
-        rows += `<td class="${v ? "on" : ""}"><input data-k="cell" data-key="${esc(key)}" value="${esc(v)}" list="subjlist" aria-label="${esc(g.label + " " + r.label + " " + m.label)}"></td>`;
+        rows += `<td class="${v ? "on" : ""}"><input data-k="cell" data-key="${esc(key)}" value="${esc(v)}" list="subjlist" aria-label="${esc(g.label + " " + r.label + " " + monthLabel(m))}"></td>`;
       });
       if (edit) rows += `<td class="no-print"></td>`;
       rows += `</tr>`;
@@ -851,9 +880,10 @@ function scheduleHTML() {
   });
   if (edit) rows += `<tr class="addrow no-print"><td colspan="${cols}"><button class="btn sm" data-act="addGroup">+ 구분 추가 (예: 야간반)</button>${C.groups.length > 1 ? ` <button class="btn sm danger" data-act="delGroup">마지막 구분 삭제</button>` : ""}</td></tr>`;
 
-  const mths = C.months.map(m => `<th><div class="cellx"><input data-k="month" data-id="${esc(m.id)}" value="${esc(m.label)}" aria-label="월">${edit ? `<button class="x" data-act="delMonth" data-id="${esc(m.id)}" title="이 열 삭제" aria-label="이 열 삭제">×</button>` : ""}</div></th>`).join("");
+  const mths = C.months.map(m => `<th><div class="cellx"><input data-k="month" data-id="${esc(m.id)}" value="${esc(monthLabel(m))}" aria-label="월">${edit ? `<button class="x" data-act="delMonth" data-id="${esc(m.id)}" title="이 열 삭제" aria-label="이 열 삭제">×</button>` : ""}</div></th>`).join("");
 
-  const blocks = C.blocks.map(b => {
+  const canBlk = edit || stuScope();
+  const blocks = blocksNow().map(b => {
     const ws = weekday(b.start), we = weekday(b.end);
     return `<div class="blk"><table>
       <tr><th class="bm" rowspan="3"><input data-k="blk" data-f="label" data-id="${esc(b.id)}" value="${esc(b.label)}" aria-label="학사일정 이름"></th>
@@ -862,10 +892,14 @@ function scheduleHTML() {
       <tr><td><input type="date" data-k="blk" data-f="start" data-id="${esc(b.id)}" value="${esc(b.start)}" aria-label="개강일"></td><td class="wd" id="wd-start-${esc(b.id)}">${ws}</td>
           <td><input type="date" data-k="blk" data-f="end" data-id="${esc(b.id)}" value="${esc(b.end)}" aria-label="종강일"></td><td class="wd" id="wd-end-${esc(b.id)}">${we}</td></tr>
       <tr><td colspan="5"><input class="memo" data-k="blk" data-f="memo" data-id="${esc(b.id)}" value="${esc(b.memo)}" placeholder="메모 (비워 두면 출력 시 빈칸)" aria-label="메모"></td></tr>
-    </table>${edit ? `<button class="x" data-act="delBlock" data-id="${esc(b.id)}" title="학사일정 삭제" aria-label="학사일정 삭제">×</button>` : ""}</div>`;
+    </table>${canBlk ? `<button class="x no-print" data-act="delBlock" data-id="${esc(b.id)}" title="학사일정 삭제" aria-label="학사일정 삭제">×</button>` : ""}</div>`;
   }).join("");
 
-  return `<section class="sheet sc">
+  const own = st && (st.months || Array.isArray(st.blocks) || typeof st.acadTitle === "string");
+  const scNote = tplMode()
+    ? `<p class="tpl-note no-print">지금은 <b>기본 일정표</b>를 고치는 중이에요. 새 수강생과, 월·학사일정을 따로 고친 적 없는 수강생에게 적용돼요.</p>`
+    : (canEdit() && !st ? `<p class="tpl-note no-print">수강생을 고르거나 새로 만들면 그 수강생의 월·개강/종강 일정을 고칠 수 있어요.</p>` : "");
+  return `<section class="sheet sc">${scNote}
     <div class="sc-head">
       <div class="ttl"><input data-k="sname" value="${esc(st?.name || "")}" placeholder="OOO" aria-label="수강생 이름"><span>님 수업일정</span></div>
       <div class="note"><input data-k="note" value="${esc(C.note)}" aria-label="안내 문구"></div>
@@ -877,12 +911,18 @@ function scheduleHTML() {
       </thead>
       <tbody>${rows}</tbody>
     </table></div>
-    <div class="acad-title"><input data-k="acadTitle" value="${esc(C.acadTitle)}" aria-label="학사일정 제목"></div>
+    <div class="acad-title"><input data-k="acadTitle" value="${esc(acadNow())}" aria-label="학사일정 제목"></div>
     <div class="blocks">${blocks}</div>
-    ${edit ? `<div class="row-btns no-print" style="padding:0 16px"><button class="btn sm" data-act="addBlock">+ 학사일정 추가</button><button class="btn sm danger" data-act="resetSchedule">기본 일정표로 되돌리기</button></div>` : ""}
+    ${edit ? `<div class="row-btns no-print" style="padding:0 16px"><button class="btn sm" data-act="addBlock">+ 학사일정 추가</button><button class="btn sm danger" data-act="resetSchedule">기본 일정표로 되돌리기</button></div>`
+      : stuScope() ? `<div class="row-btns no-print" style="padding:0 16px"><button class="btn sm" data-act="addBlock">+ 학사일정 추가</button>${own ? `<button class="btn sm danger" data-act="resetStuSchedule">이 수강생 일정을 기본으로 되돌리기</button>` : ""}</div>` : ""}
   </section>`;
 }
 
+function monthLabel(m) { const o = !tplMode() && S.cur?.months; return (o && o[m.id]) || m.label; }
+function blocksNow() { return (!tplMode() && Array.isArray(S.cur?.blocks)) ? S.cur.blocks : S.schedule.blocks; }
+function acadNow() { return (!tplMode() && typeof S.cur?.acadTitle === "string") ? S.cur.acadTitle : S.schedule.acadTitle; }
+function stuMonths(st) { if (!st.months) st.months = Object.fromEntries(S.schedule.months.map(m => [m.id, m.label])); return st.months; }
+function stuBlocks(st) { if (!Array.isArray(st.blocks)) st.blocks = clone(S.schedule.blocks); return st.blocks; }
 function monthNum(v) {
   const m = /^\s*(\d{1,2})\s*(월)?\s*$/.exec(v || "");
   if (!m) return 0;
@@ -1069,6 +1109,98 @@ function studentForm(st) {
   }, 30);
 }
 
+
+/* ---------- 수강생포폴 (수강생마다 따로: 이미지·링크·영상) ---------- */
+S.pfEdit = false;
+function pfCanEdit() { return !!S.cur && canEdit() && !S.studentView && (Store.local || Store.admin || isMine(S.cur)); }
+function pfList(create) {
+  const st = S.cur, sid = S.page.sid;
+  if (!st) return [];
+  st.portfolio = st.portfolio || {};
+  if (!Array.isArray(st.portfolio[sid])) { if (!create) return []; st.portfolio[sid] = []; }
+  return st.portfolio[sid];
+}
+function savePf() { const st = S.cur; if (!st) return; patchStudent({ portfolio: { [S.page.sid]: clone(st.portfolio[S.page.sid] || []) } }); }
+function embedURL(url) {
+  try {
+    const u = new URL(url), h = u.hostname.replace(/^www\.|^m\./, "");
+    let id = "";
+    if (h === "youtu.be") id = u.pathname.slice(1);
+    else if (h.endsWith("youtube.com")) id = u.searchParams.get("v") || (u.pathname.match(/\/(shorts|embed|live)\/([^/?]+)/) || [])[2] || "";
+    if (id) return "https://www.youtube.com/embed/" + encodeURIComponent(id.split(/[?&]/)[0]);
+    if (h === "vimeo.com") { const v = u.pathname.match(/\/(\d+)/); if (v) return "https://player.vimeo.com/video/" + v[1]; }
+    if (h === "drive.google.com") { const d = u.pathname.match(/\/file\/d\/([^/]+)/); if (d) return "https://drive.google.com/file/d/" + d[1] + "/preview"; }
+  } catch (e) {}
+  return "";
+}
+function pfHTML() {
+  const c = findCourse(S.page.cid), s = c?.subjects.find(x => x.id === S.page.sid);
+  if (!s) return `<section class="sheet"><div class="empty"><p>이 항목을 찾을 수 없어요.</p><div class="btns"><button class="btn pri" data-act="home">홈으로</button></div></div></section>`;
+  const st = S.cur;
+  const head = `<div class="sp-head"><div class="ribbon"></div>
+      <div class="crumb">${iconHTML(c.icon, "crumb-ic")}<b>${esc(c.name)}</b>${c.sub ? esc(" " + c.sub) : ""} 과정</div>
+      <h2>📁 ${esc(s.name)}${st ? `<span class="lv">${esc(st.name || "수강생")} 님</span>` : ""}</h2></div>`;
+  if (!st) {
+    return `<section class="sheet">${head}<div class="sp-body"><div class="empty"><p>${canEdit() ? "홈에서 수강생을 먼저 고른 뒤 열어 주세요. 포폴은 수강생마다 따로 보관돼요." : "학생용 링크로 들어오면 내 포폴을 볼 수 있어요."}</p><div class="btns"><button class="btn pri" data-act="home">홈으로</button></div></div></div></section>`;
+  }
+  const ed = S.pfEdit && pfCanEdit();
+  const L = pfList(false);
+  L.forEach(it => { if (it.type === "image" && it.img) loadPfImg(it.img); });
+  const items = L.map((it, i) => {
+    const op = ed ? `<div class="pf-op no-print"><button class="btn sm" data-act="pfMove" data-i="${i}" data-d="-1" aria-label="앞으로">◀</button><button class="btn sm" data-act="pfMove" data-i="${i}" data-d="1" aria-label="뒤로">▶</button><button class="btn sm danger" data-act="pfDel" data-i="${i}">삭제</button></div>` : "";
+    const cap = ed
+      ? `<input class="pf-cap" data-k="pfcap" data-i="${i}" data-f="${it.type === "image" ? "cap" : "title"}" value="${esc(it.type === "image" ? (it.cap || "") : (it.title || ""))}" placeholder="설명 (선택)" aria-label="설명">`
+      : ((it.type === "image" ? it.cap : it.title) ? `<p class="pf-cap">${esc(it.type === "image" ? it.cap : it.title)}</p>` : "");
+    if (it.type === "image") {
+      return `<figure class="pf-item"><img data-img="${esc(it.img)}" src="${S.img[it.img] || ""}" alt="${esc(it.cap || "포폴 이미지")}" ${it.w ? `width="${it.w}" height="${it.h}"` : ""}>${cap}${op}</figure>`;
+    }
+    const em = embedURL(it.url);
+    if (em) return `<figure class="pf-item wide"><div class="pf-video"><iframe src="${esc(em)}" title="${esc(it.title || "영상")}" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe></div>${cap}<a class="pf-url" href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.url)}</a>${op}</figure>`;
+    return `<figure class="pf-item link"><a href="${esc(it.url)}" target="_blank" rel="noopener"><span class="pf-link-ic" aria-hidden="true">🔗</span><span><b>${esc(it.title || "링크 열기")}</b><small>${esc(it.url)}</small></span></a>${ed ? `<input class="pf-cap" data-k="pfcap" data-i="${i}" data-f="title" value="${esc(it.title || "")}" placeholder="제목 (선택)" aria-label="제목">` : ""}${op}</figure>`;
+  }).join("");
+  const tools = ed ? `<div class="drop no-print" id="dropZone">
+      <p><b>포폴 올리기</b></p>
+      <p class="help">이미지는 <b>Ctrl+V</b>로 붙여 넣거나, 여기에 끌어다 놓거나, 버튼으로 고르세요. 영상은 유튜브·구글드라이브 주소로 추가하세요.</p>
+      <div class="btns"><label class="btn pri"><input type="file" id="imgFile" accept="image/*" multiple hidden> 이미지 파일 고르기</label><button class="btn" data-act="pfLink">🔗 링크·영상 주소 추가</button></div>
+    </div>` : "";
+  const body = L.length ? `<div class="pf-grid">${items}</div>`
+    : (ed ? "" : `<div class="empty"><p>아직 올린 포폴이 없어요.</p>${pfCanEdit() ? `<div class="btns"><button class="btn rose" data-act="pfEdit">✏️ 포폴 올리기</button></div>` : ""}</div>`);
+  return `<section class="sheet">${head}<div class="sp-body">${tools}${body}</div></section>`;
+}
+async function loadPfImg(id) {
+  if (S.img[id] !== undefined) return;
+  S.img[id] = null;
+  const d = await Store.get("pfimages/" + id);
+  S.img[id] = d && d.data ? d.data : "";
+  const el = document.querySelector(`img[data-img="${CSS.escape(id)}"]`);
+  if (el && S.img[id]) el.src = S.img[id];
+}
+async function addPfImages(files) {
+  if (!pfCanEdit()) return;
+  const list = Array.from(files || []).filter(f => f.type && f.type.startsWith("image/"));
+  if (!list.length) { toast("이미지 파일만 올릴 수 있어요. 영상은 주소로 추가하세요"); return; }
+  const sid = S.page.sid, st = S.cur;
+  setSave("saving", "이미지 올리는 중…");
+  let ok = 0;
+  for (const f of list) {
+    try {
+      const { data, w, h } = await compressImage(f);
+      const id = uid("pf");
+      if (Store.local) lsSet("pfimages/" + id, { data, w, h });
+      else await Store.set("pfimages/" + id, { data, w, h, owner: myEmail(), createdAt: Date.now() });
+      S.img[id] = data;
+      st.portfolio = st.portfolio || {};
+      (st.portfolio[sid] = st.portfolio[sid] || []).push({ id: uid("p"), type: "image", img: id, w, h, cap: "" });
+      ok++;
+    } catch (e) { console.error(e); setSave("error", e.code ? errMsg(e) : (e.message || "이미지 저장 실패")); }
+  }
+  if (ok) {
+    patchStudent({ portfolio: { [sid]: clone(st.portfolio[sid]) } });
+    if (S.page.name === "pf" && S.page.sid === sid && S.cur === st) render();
+    toast(`이미지 ${ok}장을 올렸어요`);
+  }
+}
+
 /* ---------- 학생 목표 ---------- */
 function goalHTML() {
   const st = S.cur;
@@ -1186,17 +1318,23 @@ async function addImages(files) {
   }
 }
 /* 붙여넣기(Ctrl+V)·끌어다 놓기·파일 고르기 */
+function uploadTarget() {
+  if (S.page.name === "subject" && S.subjEdit && canAdmin()) return addImages;
+  if (S.page.name === "pf" && S.pfEdit && pfCanEdit()) return addPfImages;
+  return null;
+}
 document.addEventListener("paste", e => {
-  if (S.page.name !== "subject" || !S.subjEdit || !canAdmin()) return;
+  const fn = uploadTarget(); if (!fn) return;
+  if (e.target.matches?.("input, textarea") && !Array.from(e.clipboardData?.items || []).some(i => i.kind === "file")) return;
   const files = Array.from(e.clipboardData?.items || []).filter(i => i.kind === "file" && i.type.startsWith("image/")).map(i => i.getAsFile()).filter(Boolean);
   if (!files.length) return;
   e.preventDefault();
-  addImages(files);
+  fn(files);
 });
-document.addEventListener("change", e => { if (e.target.id === "imgFile") { addImages(e.target.files); e.target.value = ""; } });
+document.addEventListener("change", e => { if (e.target.id === "imgFile") { const fn = uploadTarget(); if (fn) fn(e.target.files); e.target.value = ""; } });
 document.addEventListener("dragover", e => { const z = e.target.closest?.("#dropZone"); if (z) { e.preventDefault(); z.classList.add("over"); } });
 document.addEventListener("dragleave", e => { const z = e.target.closest?.("#dropZone"); if (z) z.classList.remove("over"); });
-document.addEventListener("drop", e => { const z = e.target.closest?.("#dropZone"); if (z) { e.preventDefault(); z.classList.remove("over"); addImages(e.dataTransfer?.files); } });
+document.addEventListener("drop", e => { const z = e.target.closest?.("#dropZone"); if (z) { e.preventDefault(); z.classList.remove("over"); const fn = uploadTarget(); if (fn) fn(e.dataTransfer?.files); } });
 
 /* ================= 모달·토스트 ================= */
 function modal({ title, body, actions }) {
@@ -1334,7 +1472,7 @@ function delCourse(c) {
 /* ================= 이동 ================= */
 function go(page) {
   S.stack.push({ page: S.page, y: window.scrollY, mode: S.mode });
-  S.page = page; S.subjEdit = false; S.tab = null; S.mentorEdit = false;
+  S.page = page; S.subjEdit = false; S.tab = null; S.mentorEdit = false; S.pfEdit = false;
   render(); window.scrollTo(0, 0);
 }
 function back() {
@@ -1347,7 +1485,7 @@ function back() {
 
 /* ================= 클릭 동작 ================= */
 const ADMIN_ACTS = new Set(["addSubj", "addCourse", "cMove", "cDel", "loadRoadmap", "resetRoadmap", "loadSchedule", "resetSchedule",
-  "addMonth", "delMonth", "addRow", "delRow", "addGroup", "delGroup", "addBlock", "delBlock",
+  "addMonth", "delMonth", "addRow", "delRow", "addGroup", "delGroup",
   "subjEdit", "dayAdd", "dayAddMany", "dayMove", "dayDel", "imgMove", "imgDel"]);
 const ACT = {
   home() { S.stack = []; S.page = { name: "home" }; S.subjEdit = false; render(); window.scrollTo(0, 0); },
@@ -1367,6 +1505,7 @@ const ACT = {
   subj(el) {
     const c = findCourse(el.dataset.c), s = c?.subjects.find(x => x.id === el.dataset.s);
     if (!s) return;
+    if (s.kind === "pf" && S.mode !== "edit") { go({ name: "pf", cid: c.id, sid: s.id }); return; }
     if (S.mode === "check") {
       if (S.justDragged) return;
       if (!S.cur) { ACT.newStudent(); return; }
@@ -1392,6 +1531,42 @@ const ACT = {
     } else if (S.mode === "edit") editCourse(c);
   },
   addSubj(el) { const c = findCourse(el.dataset.c); if (c) editSubject(c, null); },
+  addPf(el) {
+    const c = findCourse(el.dataset.c); if (!c) return;
+    c.subjects.push({ id: uid(c.id + "-"), name: "수강생포폴", level: "", note: "", br: false, kind: "pf" });
+    saveRoadmap(); render(); toast("수강생포폴 칸을 추가했어요. 눌러서 이름·위치를 고칠 수 있어요");
+  },
+  pfEdit() { if (!pfCanEdit()) return; S.pfEdit = !S.pfEdit; render(); },
+  pfLink() {
+    if (!pfCanEdit()) return;
+    modal({
+      title: "링크·영상 추가",
+      body: `<label>주소<input type="text" id="f-url" placeholder="https://…"><span class="help">유튜브·비메오·구글드라이브 영상 주소는 페이지 안에서 바로 재생돼요. 노션·비핸스 등 다른 주소는 링크로 보여요.</span></label>
+        <label>제목 (선택)<input type="text" id="f-ttl" placeholder="예: 포토샵 합성 과제"></label>`,
+      actions: [{ label: "취소" }, { label: "추가", cls: "pri", fn: box => {
+        let url = box.querySelector("#f-url").value.trim();
+        if (!url) { toast("주소를 입력하세요"); return false; }
+        if (!/^https?:\/\//i.test(url)) url = "https://" + url;
+        try { new URL(url); } catch (e) { toast("주소 형식을 확인하세요"); return false; }
+        const L = pfList(true);
+        L.push({ id: uid("p"), type: "link", url, title: box.querySelector("#f-ttl").value.trim() });
+        savePf(); render();
+      } }]
+    });
+  },
+  pfMove(el) {
+    const L = pfList(true), i = +el.dataset.i, j = i + (+el.dataset.d);
+    if (j < 0 || j >= L.length) return;
+    [L[i], L[j]] = [L[j], L[i]]; savePf(); render();
+  },
+  pfDel(el) {
+    const L = pfList(true), i = +el.dataset.i, it = L[i]; if (!it) return;
+    confirmBox("포폴 삭제", `${i + 1}번째 항목을 삭제할까요?`, "삭제", () => {
+      L.splice(i, 1); savePf();
+      if (it.type === "image" && it.img) { removeDoc("pfimages/" + it.img); delete S.img[it.img]; }
+      render();
+    });
+  },
   addCourse() { editCourse(null); },
   cMove(el) {
     const L = S.roadmap.courses, i = L.findIndex(c => c.id === el.dataset.c), j = i + (+el.dataset.d);
@@ -1431,10 +1606,29 @@ const ACT = {
     const g = S.schedule.groups[S.schedule.groups.length - 1];
     confirmBox("구분 삭제", `‘${g.label}’ 구분과 그 시간 ${g.rows.length}개를 삭제할까요?`, "삭제", () => { S.schedule.groups.pop(); saveSchedule(); render(); });
   },
-  addBlock() { S.schedule.blocks.push({ id: uid("b"), label: "새 일정", head: "강의", start: "", end: "", memo: "" }); saveSchedule(); render(); },
+  addBlock() {
+    const nb = { id: uid("b"), label: "새 일정", head: "강의", start: "", end: "", memo: "" };
+    if (tplMode()) { S.schedule.blocks.push(nb); saveSchedule(); }
+    else if (stuScope()) { const L = stuBlocks(S.cur); L.push(nb); patchStudent({ blocks: clone(L) }); }
+    render();
+  },
   delBlock(el) {
-    const b = S.schedule.blocks.find(x => x.id === el.dataset.id); if (!b) return;
-    confirmBox("학사일정 삭제", `‘${b.label}’ 학사일정을 삭제할까요?`, "삭제", () => { S.schedule.blocks = S.schedule.blocks.filter(x => x !== b); saveSchedule(); render(); });
+    const tpl = tplMode();
+    if (!tpl && !stuScope()) return;
+    const L = tpl ? S.schedule.blocks : stuBlocks(S.cur);
+    const b = L.find(x => x.id === el.dataset.id); if (!b) return;
+    confirmBox("학사일정 삭제", `‘${b.label}’ 학사일정을 삭제할까요?${tpl ? "" : "\n(이 수강생 일정에서만 지워져요)"}`, "삭제", () => {
+      const i = L.indexOf(b); if (i >= 0) L.splice(i, 1);
+      if (tpl) saveSchedule(); else patchStudent({ blocks: clone(L) });
+      render();
+    });
+  },
+  resetStuSchedule() {
+    const st = S.cur; if (!st || !stuScope()) return;
+    confirmBox("기본 일정으로 되돌리기", `${st.name || "이 수강생"} 님의 월·개강/종강 일정을 기본 일정표로 되돌릴까요?\n시간표 칸에 적은 내용은 그대로 남아요.`, "되돌리기", () => {
+      delete st.months; delete st.blocks; delete st.acadTitle;
+      patchStudent({ months: DEL, blocks: DEL, acadTitle: DEL }); render();
+    });
   },
   newStudent() { studentForm(null); },
   editStudent() { if (S.cur) studentForm(S.cur); },
@@ -1520,13 +1714,15 @@ document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches('.clabel[role="button"]')) { e.preventDefault(); ACT.course(e.target); }
 });
 document.addEventListener("change", e => {
-  if (e.target.dataset?.k === "month" && canAdmin()) {
+  if (e.target.dataset?.k === "month" && (tplMode() || stuScope())) {
     /* 월 입력 정리: 숫자만 넣어도 ‘9월’로, 뒤 칸은 10월·11월…로 자동 채움 */
     const L = S.schedule.months, i = L.findIndex(x => x.id === e.target.dataset.id);
     const n = monthNum(e.target.value);
     if (i >= 0 && n) {
-      for (let j = i; j < L.length; j++) L[j].label = (((n - 1 + (j - i)) % 12) + 1) + "월";
-      saveSchedule(); render();
+      const lab = j => (((n - 1 + (j - i)) % 12) + 1) + "월";
+      if (tplMode()) { for (let j = i; j < L.length; j++) L[j].label = lab(j); saveSchedule(); }
+      else { const mm = stuMonths(S.cur); for (let j = i; j < L.length; j++) mm[L[j].id] = lab(j); patchStudent({ months: clone(mm) }); }
+      render();
     }
     return;
   }
@@ -1565,16 +1761,28 @@ const IN = {
   note(el) { S.schedule.note = el.value; saveSchedule(); },
   tableTitle(el) { S.schedule.tableTitle = el.value; saveSchedule(); },
   timeLabel(el) { S.schedule.timeLabel = el.value; saveSchedule(); },
-  acadTitle(el) { S.schedule.acadTitle = el.value; saveSchedule(); },
-  month(el) { const m = S.schedule.months.find(x => x.id === el.dataset.id); if (m) { m.label = el.value; saveSchedule(); } },
+  acadTitle(el) {
+    if (tplMode()) { S.schedule.acadTitle = el.value; saveSchedule(); return; }
+    if (!stuScope()) return;
+    S.cur.acadTitle = el.value; patchStudent({ acadTitle: el.value });
+  },
+  month(el) {
+    const m = S.schedule.months.find(x => x.id === el.dataset.id); if (!m) return;
+    if (tplMode()) { m.label = el.value; saveSchedule(); return; }
+    if (!stuScope()) return;
+    const mm = stuMonths(S.cur); mm[m.id] = el.value; patchStudent({ months: clone(mm) });
+  },
   grp(el) { const g = S.schedule.groups.find(x => x.id === el.dataset.id); if (g) { g.label = el.value; saveSchedule(); } },
   rowlabel(el) {
     const g = S.schedule.groups.find(x => x.id === el.dataset.g), r = g?.rows.find(x => x.id === el.dataset.id);
     if (r) { r.label = el.value; saveSchedule(); }
   },
   blk(el) {
-    const b = S.schedule.blocks.find(x => x.id === el.dataset.id); if (!b) return;
-    const f = el.dataset.f; b[f] = el.value; saveSchedule();
+    const L = tplMode() ? S.schedule.blocks : (stuScope() ? stuBlocks(S.cur) : null);
+    if (!L) return;
+    const b = L.find(x => x.id === el.dataset.id); if (!b) return;
+    const f = el.dataset.f; b[f] = el.value;
+    if (tplMode()) saveSchedule(); else patchStudent({ blocks: clone(L) });
     if (f === "start" || f === "end") { const w = document.getElementById(`wd-${f}-${b.id}`); if (w) w.textContent = weekday(el.value); }
   },
   hdrimg(el) { S.roadmap.headerImg = el.checked; saveRoadmap(); render(); },
@@ -1582,6 +1790,10 @@ const IN = {
   rmtag(el) { S.roadmap.tags[+el.dataset.i] = el.value; saveRoadmap(); },
   day(el) { const cur = curOf(); const d = cur?.days[+el.dataset.i]; if (d) { d[el.dataset.f] = el.value; saveCur(); } },
   sum(el) { const cur = curOf(); if (cur) { cur.summary[el.dataset.f] = el.value; saveCur(); } },
+  pfcap(el) {
+    const L = pfList(true), it = L[+el.dataset.i]; if (!it) return;
+    it[el.dataset.f || "cap"] = el.value; savePf();
+  },
   goal(el) {
     const st = ensureStudent(); st.goal = el.value; patchStudent({ goal: el.value });
     el.closest(".goal")?.classList.toggle("empty-goal", !el.value.trim());
@@ -1597,7 +1809,8 @@ const IN = {
 document.addEventListener("input", e => {
   const k = e.target.dataset?.k;
   if (!k || !IN[k] || !canEdit()) return;
-  if (!STUDENT_KEYS.has(k) && !canAdmin()) return;
+  if (SCOPED_KEYS.has(k)) { if (!tplMode() && !stuScope()) return; }
+  else if (!STUDENT_KEYS.has(k) && !canAdmin()) return;
   IN[k](e.target);
 });
 
@@ -1613,11 +1826,11 @@ function rerenderCourse(cid) {
 function dragIds() {
   const c = findCourse(drag.cid);
   const a = Math.min(drag.start, drag.cur), b = Math.max(drag.start, drag.cur);
-  return c.subjects.slice(a, b + 1).map(s => s.id);
+  return c.subjects.slice(a, b + 1).filter(s => s.kind !== "pf").map(s => s.id);
 }
 document.addEventListener("pointerdown", e => {
   if (S.mode !== "check" || S.page.name !== "home" || !canEdit() || e.button > 0) return;
-  const el = e.target.closest(".subj[data-s]"); if (!el) return;
+  const el = e.target.closest(".subj[data-s]"); if (!el || el.classList.contains("pf")) return;
   const c = findCourse(el.dataset.c); if (!c) return;
   const idx = c.subjects.findIndex(s => s.id === el.dataset.s); if (idx < 0) return;
   if (!S.cur) return; /* 수강생이 없으면 클릭 시 새 수강생 창이 뜸 */
