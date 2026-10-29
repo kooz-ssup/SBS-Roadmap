@@ -254,6 +254,11 @@ table.days{border-collapse:collapse;width:100%;font-size:14px}
 input.pf-cap{width:calc(100% - 24px);border:1px solid var(--line);border-radius:7px;padding:6px 8px;background:var(--field)}
 .pf-op{display:flex;gap:6px;padding:0 12px 12px;flex-wrap:wrap}
 @media screen and (max-width:620px){.pf-item.wide{grid-column:auto}}
+.bm-l{font-weight:800;color:#1d2340}
+.acad-title{position:relative}
+.yctl{position:absolute;right:0;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+.yctl b{color:var(--ink)}
+@media screen and (max-width:860px){.yctl{position:static;transform:none;display:flex;justify-content:center;margin-top:6px}}
 .tpl-note{margin:0;padding:10px 16px;background:var(--field);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);text-align:center}
 .shared{margin:8px 0 0;font-size:13px;color:var(--muted)}
 .simgs{display:grid;gap:16px}
@@ -892,22 +897,29 @@ function scheduleHTML() {
 
   const mths = C.months.map(m => `<th><div class="cellx"><input data-k="month" data-id="${esc(m.id)}" value="${esc(monthLabel(m))}" aria-label="월">${edit ? `<button class="x" data-act="delMonth" data-id="${esc(m.id)}" title="이 열 삭제" aria-label="이 열 삭제">×</button>` : ""}</div></th>`).join("");
 
-  const canBlk = edit || (stuScope() && S.scEdit);
-  const blocks = blocksNow().map(b => {
-    const ws = weekday(b.start), we = weekday(b.end);
+  const view = blockView();
+  const blocks = view.list.map(b => {
+    const ws = weekday(b.start), we = weekday(b.end), k = esc(b.key);
+    const lab = tplMode()
+      ? `<input data-k="blk" data-f="label" data-id="${k}" value="${esc(b.label)}" aria-label="학사일정 이름">`
+      : `<span class="bm-l">${esc(b.label)}</span>`;
     return `<div class="blk"><table>
-      <tr><th class="bm" rowspan="3"><input data-k="blk" data-f="label" data-id="${esc(b.id)}" value="${esc(b.label)}" aria-label="학사일정 이름"></th>
-          <th colspan="4"><input data-k="blk" data-f="head" data-id="${esc(b.id)}" value="${esc(b.head ?? "강의")}" aria-label="구분"></th></tr>
+      <tr><th class="bm" rowspan="3">${lab}</th>
+          <th colspan="4"><input data-k="blk" data-f="head" data-id="${k}" value="${esc(b.head ?? "강의")}" aria-label="구분"></th></tr>
       <tr><th colspan="2">개강일</th><th colspan="2">종강일</th></tr>
-      <tr><td><input type="date"${b.start ? "" : ' class="nodate"'} data-k="blk" data-f="start" data-id="${esc(b.id)}" value="${esc(b.start)}" aria-label="개강일"></td><td class="wd" id="wd-start-${esc(b.id)}">${ws}</td>
-          <td><input type="date"${b.end ? "" : ' class="nodate"'} data-k="blk" data-f="end" data-id="${esc(b.id)}" value="${esc(b.end)}" aria-label="종강일"></td><td class="wd" id="wd-end-${esc(b.id)}">${we}</td></tr>
-      <tr><td colspan="5"><input class="memo" data-k="blk" data-f="memo" data-id="${esc(b.id)}" value="${esc(b.memo)}" placeholder="메모 (비워 두면 출력 시 빈칸)" aria-label="메모"></td></tr>
-    </table>${canBlk ? `<button class="x no-print" data-act="delBlock" data-id="${esc(b.id)}" title="학사일정 삭제" aria-label="학사일정 삭제">×</button>` : ""}</div>`;
+      <tr><td><input type="date"${b.start ? "" : ' class="nodate"'} data-k="blk" data-f="start" data-id="${k}" value="${esc(b.start)}" aria-label="개강일"></td><td class="wd" id="wd-start-${k}">${ws}</td>
+          <td><input type="date"${b.end ? "" : ' class="nodate"'} data-k="blk" data-f="end" data-id="${k}" value="${esc(b.end)}" aria-label="종강일"></td><td class="wd" id="wd-end-${k}">${we}</td></tr>
+      <tr><td colspan="5"><input class="memo" data-k="blk" data-f="memo" data-id="${k}" value="${esc(b.memo)}" placeholder="메모 (비워 두면 출력 시 빈칸)" aria-label="메모"></td></tr>
+    </table>${tplMode() ? `<button class="x no-print" data-act="delBlock" data-id="${k}" title="학사일정 삭제" aria-label="학사일정 삭제">×</button>` : ""}</div>`;
   }).join("");
+  const yearCtl = !tplMode() && view.y0 && (stuScope())
+    ? `<span class="yctl no-print"><button class="btn sm" data-act="yearShift" data-d="-1" aria-label="이전 연도">◀</button><b>${view.y0}년 ${view.m0}월</b> 시작<button class="btn sm" data-act="yearShift" data-d="1" aria-label="다음 연도">▶</button></span>` : "";
+  const emptyBlk = !view.list.length
+    ? `<p class="tpl-note no-print" style="border:0">${tplMode() ? "[+ 학사일정 추가]로 월별 개강·종강일을 넣어 주세요." : "이 기간의 학사일정이 아직 없어요. 관리자가 [편집] 모드에서 월별 개강일을 넣으면 자동으로 채워져요."}</p>` : "";
 
-  const own = st && (st.months || Array.isArray(st.blocks) || typeof st.acadTitle === "string");
+  const own = st && (st.months || (st.blkOv && Object.keys(st.blkOv).length) || st.year0 || typeof st.acadTitle === "string");
   const scNote = tplMode()
-    ? `<p class="tpl-note no-print">지금은 <b>기본 일정표</b>를 고치는 중이에요. 새 수강생과, 월·학사일정을 따로 고친 적 없는 수강생에게 적용돼요.</p>`
+    ? `<p class="tpl-note no-print">지금은 <b>기본 일정표와 월별 학사일정</b>을 고치는 중이에요. 여기 넣은 월별 개강·종강일이 각 수강생의 시간표 월에 맞춰 자동으로 들어가요.</p>`
     : (canEdit() && !st ? `<p class="tpl-note no-print">수강생을 고르거나 새로 만들면 그 수강생의 월·개강/종강 일정을 고칠 수 있어요.</p>` : "");
   return `<section class="sheet sc">${scNote}
     <div class="sc-head">
@@ -921,20 +933,57 @@ function scheduleHTML() {
       </thead>
       <tbody>${rows}</tbody>
     </table></div>
-    <div class="acad-title"><input data-k="acadTitle" value="${esc(acadNow())}" aria-label="학사일정 제목"></div>
-    <div class="blocks">${blocks}</div>
-    ${edit ? `<div class="row-btns no-print" style="padding:0 16px"><button class="btn sm" data-act="addBlock">+ 학사일정 추가</button><button class="btn sm danger" data-act="resetSchedule">기본 일정표로 되돌리기</button></div>`
-      : stuScope() ? `<div class="row-btns no-print" style="padding:0 16px">${S.scEdit
-          ? `<button class="btn sm" data-act="addBlock">+ 학사일정 추가</button>${own ? `<button class="btn sm danger" data-act="resetStuSchedule">이 수강생 일정을 기본으로 되돌리기</button>` : ""}<button class="btn sm rose" data-act="scEdit">✓ 학사일정 편집 완료</button>`
-          : `<button class="btn sm" data-act="scEdit">✏️ 학사일정 칸 추가·삭제</button>`}</div>` : ""}
+    <div class="acad-title"><input data-k="acadTitle" value="${esc(acadNow())}" aria-label="학사일정 제목">${yearCtl}</div>
+    ${emptyBlk}<div class="blocks">${blocks}</div>
+    ${tplMode() ? `<div class="row-btns no-print" style="padding:0 16px"><button class="btn sm" data-act="addBlock">+ 학사일정 추가</button><button class="btn sm danger" data-act="resetSchedule">기본 일정표로 되돌리기</button></div>`
+      : (stuScope() && own ? `<div class="row-btns no-print" style="padding:0 16px"><button class="btn sm danger" data-act="resetStuSchedule">이 수강생의 월·개강일 수정 되돌리기</button></div>` : "")}
   </section>`;
 }
 
 function monthLabel(m) { const o = !tplMode() && S.cur?.months; return (o && o[m.id]) || m.label; }
-function blocksNow() { return (!tplMode() && Array.isArray(S.cur?.blocks)) ? S.cur.blocks : S.schedule.blocks; }
+/* 학사일정: 관리자가 넣은 월별 개강·종강일(기본)을 시간표의 월 순서에 맞춰 자동 배치 */
+const ymOf = b => (b && /^\d{4}-\d{2}/.test(b.start || "")) ? b.start.slice(0, 7) : "";
+function masterBlocks() {
+  return (S.schedule?.blocks || []).slice().sort((x, y) => {
+    const a = ymOf(x) || "9999", b = ymOf(y) || "9999";
+    return a < b ? -1 : a > b ? 1 : 0;
+  });
+}
+function blockView() {
+  if (tplMode()) return { list: masterBlocks().map(b => Object.assign({ key: b.id }, b)), y0: 0, m0: 0 };
+  const st = S.cur, master = masterBlocks();
+  const byYm = {}; master.forEach(b => { const ym = ymOf(b); if (ym && !byYm[ym]) byYm[ym] = b; });
+  const cols = S.schedule.months.map(m => monthNum(monthLabel(m))).filter(Boolean);
+  if (!cols.length) return { list: [], y0: 0, m0: 0 };
+  const m0 = cols[0];
+  let y0 = st?.year0 || 0;
+  if (!y0) {
+    /* 기준 연도: 첫 달이 오늘과 가장 가까운 해 */
+    const now = new Date(); const t = now.getFullYear() * 12 + now.getMonth();
+    let best = null;
+    for (let y = now.getFullYear() - 1; y <= now.getFullYear() + 1; y++) {
+      const d = Math.abs(y * 12 + (m0 - 1) - t);
+      const has = byYm[`${y}-${String(m0).padStart(2, "0")}`] ? 0 : 0.5;
+      if (!best || d + has < best.d) best = { d: d + has, y };
+    }
+    y0 = best.y;
+  }
+  const ov = st?.blkOv || {};
+  const list = []; let y = y0, prev = 0;
+  cols.forEach((m, j) => {
+    if (j > 0 && m <= prev) y++;
+    prev = m;
+    const ym = `${y}-${String(m).padStart(2, "0")}`;
+    const base = byYm[ym], o = ov[ym];
+    if (!base && !o) return;
+    list.push(Object.assign({ key: ym, label: m + "월", head: "강의", start: "", end: "", memo: "" },
+      base ? { head: base.head ?? "강의", start: base.start || "", end: base.end || "", memo: base.memo || "" } : {},
+      o || {}, { key: ym, label: m + "월" }));
+  });
+  return { list, y0, m0 };
+}
 function acadNow() { return (!tplMode() && typeof S.cur?.acadTitle === "string") ? S.cur.acadTitle : S.schedule.acadTitle; }
 function stuMonths(st) { if (!st.months) st.months = Object.fromEntries(S.schedule.months.map(m => [m.id, m.label])); return st.months; }
-function stuBlocks(st) { if (!Array.isArray(st.blocks)) st.blocks = clone(S.schedule.blocks); return st.blocks; }
 function monthNum(v) {
   const m = /^\s*(\d{1,2})\s*(월)?\s*$/.exec(v || "");
   if (!m) return 0;
@@ -1681,28 +1730,32 @@ const ACT = {
     confirmBox("구분 삭제", `‘${g.label}’ 구분과 그 시간 ${g.rows.length}개를 삭제할까요?`, "삭제", () => { S.schedule.groups.pop(); saveSchedule(); render(); });
   },
   addBlock() {
-    const nb = { id: uid("b"), label: "새 일정", head: "강의", start: "", end: "", memo: "" };
-    if (tplMode()) { S.schedule.blocks.push(nb); saveSchedule(); }
-    else if (stuScope()) { const L = stuBlocks(S.cur); L.push(nb); patchStudent({ blocks: clone(L) }); }
-    render();
+    if (!tplMode()) return;
+    /* 마지막 학사일정 다음 달로 미리 채움 */
+    const last = masterBlocks().filter(ymOf).pop();
+    let label = "새 일정";
+    if (last) { const [y, m] = ymOf(last).split("-").map(Number); label = (m % 12 + 1) + "월"; }
+    S.schedule.blocks.push({ id: uid("b"), label, head: "강의", start: "", end: "", memo: "" });
+    saveSchedule(); render();
+    setTimeout(() => { const all = document.querySelectorAll('.blk input[data-f="start"]'); all[all.length - 1]?.focus(); }, 30);
   },
   delBlock(el) {
-    const tpl = tplMode();
-    if (!tpl && !stuScope()) return;
-    const L = tpl ? S.schedule.blocks : stuBlocks(S.cur);
-    const b = L.find(x => x.id === el.dataset.id); if (!b) return;
-    confirmBox("학사일정 삭제", `‘${b.label}’ 학사일정을 삭제할까요?${tpl ? "" : "\n(이 수강생 일정에서만 지워져요)"}`, "삭제", () => {
-      const i = L.indexOf(b); if (i >= 0) L.splice(i, 1);
-      if (tpl) saveSchedule(); else patchStudent({ blocks: clone(L) });
-      render();
+    if (!tplMode()) return;
+    const L = S.schedule.blocks, b = L.find(x => x.id === el.dataset.id); if (!b) return;
+    confirmBox("학사일정 삭제", `‘${b.label}’ 학사일정을 삭제할까요?`, "삭제", () => {
+      const i = L.indexOf(b); if (i >= 0) L.splice(i, 1); saveSchedule(); render();
     });
   },
-  scEdit() { S.scEdit = !S.scEdit; render(); },
+  yearShift(el) {
+    const st = S.cur; if (!st || !stuScope()) return;
+    const v = blockView(); st.year0 = (v.y0 || new Date().getFullYear()) + (+el.dataset.d);
+    patchStudent({ year0: st.year0 }); render();
+  },
   resetStuSchedule() {
     const st = S.cur; if (!st || !stuScope()) return;
     confirmBox("기본 일정으로 되돌리기", `${st.name || "이 수강생"} 님의 월·개강/종강 일정을 기본 일정표로 되돌릴까요?\n시간표 칸에 적은 내용은 그대로 남아요.`, "되돌리기", () => {
-      delete st.months; delete st.blocks; delete st.acadTitle;
-      patchStudent({ months: DEL, blocks: DEL, acadTitle: DEL }); render();
+      delete st.months; delete st.blocks; delete st.acadTitle; delete st.blkOv; delete st.year0;
+      patchStudent({ months: DEL, blocks: DEL, acadTitle: DEL, blkOv: DEL, year0: DEL }); render();
     });
   },
   newStudent() { studentForm(null); },
@@ -1801,12 +1854,12 @@ document.addEventListener("change", e => {
     }
     return;
   }
+  if (e.target.dataset?.k === "blk" && e.target.dataset.f === "start" && tplMode()) { render(); return; }
   if (e.target.id === "scopeSel") {
     S.showAll = e.target.value === "all"; lsSet("pref:showAll", S.showAll);
     pickVisible(lsGet("pref:student"));
     render();
   } else if (e.target.id === "stuSel") {
-    S.scEdit = false;
     S.cur = S.students.find(s => s.id === e.target.value) || null;
     if (S.cur) lsSet("pref:student", S.cur.id);
     render();
@@ -1856,13 +1909,23 @@ const IN = {
     if (r) { r.label = el.value; saveSchedule(); }
   },
   blk(el) {
-    const L = tplMode() ? S.schedule.blocks : (stuScope() ? stuBlocks(S.cur) : null);
-    if (!L) return;
-    const b = L.find(x => x.id === el.dataset.id); if (!b) return;
-    const f = el.dataset.f; b[f] = el.value;
+    const f = el.dataset.f, id = el.dataset.id;
     if (el.type === "date") el.classList.toggle("nodate", !el.value);
-    if (tplMode()) saveSchedule(); else patchStudent({ blocks: clone(L) });
-    if (f === "start" || f === "end") { const w = document.getElementById(`wd-${f}-${b.id}`); if (w) w.textContent = weekday(el.value); }
+    if (tplMode()) {
+      const b = S.schedule.blocks.find(x => x.id === id); if (!b) return;
+      b[f] = el.value;
+      /* 개강일을 넣으면 이름(○월)도 자동으로 */
+      if (f === "start" && /^\d{4}-\d{2}/.test(el.value) && (!b.label || monthNum(b.label) || b.label === "새 일정")) {
+        b.label = (+el.value.slice(5, 7)) + "월";
+        const li = el.closest(".blk")?.querySelector('[data-f="label"]'); if (li) li.value = b.label;
+      }
+      saveSchedule();
+    } else if (stuScope()) {
+      const st = S.cur; st.blkOv = st.blkOv || {};
+      (st.blkOv[id] = st.blkOv[id] || {})[f] = el.value;
+      patchStudent({ blkOv: { [id]: { [f]: el.value } } });
+    } else return;
+    if (f === "start" || f === "end") { const w = document.getElementById(`wd-${f}-${id}`); if (w) w.textContent = weekday(el.value); }
   },
   hdrimg(el) { S.roadmap.headerImg = el.checked; saveRoadmap(); render(); },
   rmtitle(el) { S.roadmap.title = el.value; saveRoadmap(); },
