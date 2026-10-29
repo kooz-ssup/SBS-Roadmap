@@ -238,6 +238,8 @@ table.days{border-collapse:collapse;width:100%;font-size:14px}
 .subj.pf .nm{color:var(--navy)}
 .pf-ic{margin-right:2px}
 .rm.focus .subj.pf{opacity:1}
+.pf-legacy{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:#fff8e6;border:1px solid #f3d68a;border-radius:12px;padding:12px 16px;margin-bottom:16px;color:#5a4410}
+.pf-legacy p{margin:0;font-size:14px}
 .pf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px;align-items:start}
 .pf-item{margin:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--paper);display:flex;flex-direction:column}
 .pf-item img{display:block;width:100%;height:auto;background:#fff}
@@ -1297,15 +1299,31 @@ function studentForm(st) {
 
 /* ---------- 수강생포폴 (수강생마다 따로: 이미지·링크·영상) ---------- */
 S.pfEdit = false;
-function pfCanEdit() { return !!S.cur && canEdit() && !S.studentView && (Store.local || Store.admin || isMine(S.cur)); }
-function pfList(create) {
-  const st = S.cur, sid = S.page.sid;
-  if (!st) return [];
-  st.portfolio = st.portfolio || {};
-  if (!Array.isArray(st.portfolio[sid])) { if (!create) return []; st.portfolio[sid] = []; }
-  return st.portfolio[sid];
+/* 수강생포폴: 이전 수강생들의 작품을 모아 둔 공통 포폴 (관리자만 올리기·수정) */
+S.pfc = {};
+function pfCanEdit() { return canAdmin() && !S.studentView; }
+function pfList() { const d = S.pfc[S.page.sid]; return d ? d.items : []; }
+function savePf() { const sid = S.page.sid, d = S.pfc[sid]; if (d && pfCanEdit()) save("portfolios/" + sid, { items: clone(d.items), updatedAt: Date.now() }); }
+async function loadPfc(sid) {
+  if (S.pfc[sid] !== undefined || loadPfc.busy === sid) return;
+  loadPfc.busy = sid;
+  const d = await Store.get("portfolios/" + sid);
+  loadPfc.busy = null;
+  S.pfc[sid] = { items: Array.isArray(d?.items) ? d.items : [] };
+  if (S.page.name === "pf" && S.page.sid === sid) render();
 }
-function savePf() { const st = S.cur; if (!st) return; patchStudent({ portfolio: { [S.page.sid]: clone(st.portfolio[S.page.sid] || []) } }); }
+/* 예전 방식(수강생별)으로 올렸던 포폴 찾기: 이 칸 + 지금은 없어진 칸에 올린 것 */
+function legacyPf(sid) {
+  const live = new Set();
+  (S.roadmap?.courses || []).forEach(c => c.subjects.forEach(s => live.add(s.id)));
+  const have = new Set(pfList().map(i => i.id));
+  const out = [];
+  S.students.forEach(st => Object.entries(st.portfolio || {}).forEach(([k, items]) => {
+    if (k !== sid && live.has(k)) return;
+    (items || []).forEach(it => { if (!have.has(it.id) && !out.some(x => x.id === it.id)) out.push(Object.assign({ from: st.name || "" }, it)); });
+  }));
+  return out;
+}
 function embedURL(url) {
   try {
     const u = new URL(url), h = u.hostname.replace(/^www\.|^m\./, "");
@@ -1321,15 +1339,14 @@ function embedURL(url) {
 function pfHTML() {
   const c = findCourse(S.page.cid), s = c?.subjects.find(x => x.id === S.page.sid);
   if (!s) return `<section class="sheet"><div class="empty"><p>이 항목을 찾을 수 없어요.</p><div class="btns"><button class="btn pri" data-act="home">홈으로</button></div></div></section>`;
-  const st = S.cur;
   const head = `<div class="sp-head"><div class="ribbon"></div>
       <div class="crumb">${iconHTML(c.icon, "crumb-ic")}<b>${esc(c.name)}</b>${c.sub ? esc(" " + c.sub) : ""} 과정</div>
-      <h2>📁 ${esc(s.name)}${st ? `<span class="lv">${esc(st.name || "수강생")} 님</span>` : ""}</h2></div>`;
-  if (!st) {
-    return `<section class="sheet">${head}<div class="sp-body"><div class="empty"><p>${canEdit() ? "홈에서 수강생을 먼저 고른 뒤 열어 주세요. 포폴은 수강생마다 따로 보관돼요." : "학생용 링크로 들어오면 내 포폴을 볼 수 있어요."}</p><div class="btns"><button class="btn pri" data-act="home">홈으로</button></div></div></div></section>`;
-  }
+      <h2>📁 ${esc(s.name)}</h2><p class="nt">이전 수강생들의 작품이에요.</p></div>`;
+  if (S.pfc[s.id] === undefined) { loadPfc(s.id); return `<section class="sheet">${head}<div class="loading">불러오는 중…</div></section>`; }
   const ed = S.pfEdit && pfCanEdit();
-  const L = pfList(false);
+  const L = pfList();
+  const legacy = pfCanEdit() ? legacyPf(s.id) : [];
+  const legacyBar = legacy.length ? `<div class="pf-legacy no-print"><p>📦 예전에 <b>수강생 화면</b>에서 올렸던 포폴 <b>${legacy.length}개</b>가 있어요${legacy[0].from ? ` (${esc([...new Set(legacy.map(x => x.from).filter(Boolean))].join(", "))} 수강생)` : ""}. 공통 포폴로 옮겨 올까요?</p><button class="btn sm pri" data-act="pfImport">가져오기</button></div>` : "";
   L.forEach(it => { if (it.type === "image" && it.img) loadPfImg(it.img); });
   const items = L.map((it, i) => {
     const op = ed ? `<div class="pf-op no-print"><button class="btn sm" data-act="pfMove" data-i="${i}" data-d="-1" aria-label="앞으로">◀</button><button class="btn sm" data-act="pfMove" data-i="${i}" data-d="1" aria-label="뒤로">▶</button><button class="btn sm danger" data-act="pfDel" data-i="${i}">삭제</button></div>` : "";
@@ -1350,7 +1367,7 @@ function pfHTML() {
     </div>` : "";
   const body = L.length ? `<div class="pf-grid">${items}</div>`
     : (ed ? "" : `<div class="empty"><p>아직 올린 포폴이 없어요.</p>${pfCanEdit() ? `<div class="btns"><button class="btn rose" data-act="pfEdit">✏️ 포폴 올리기</button></div>` : ""}</div>`);
-  return `<section class="sheet">${head}<div class="sp-body">${tools}${body}</div></section>`;
+  return `<section class="sheet">${head}<div class="sp-body">${legacyBar}${tools}${body}</div></section>`;
 }
 async function loadPfImg(id) {
   if (S.img[id] !== undefined) return;
@@ -1364,7 +1381,7 @@ async function addPfImages(files) {
   if (!pfCanEdit()) return;
   const list = Array.from(files || []).filter(f => f.type && f.type.startsWith("image/"));
   if (!list.length) { toast("이미지 파일만 올릴 수 있어요. 영상은 주소로 추가하세요"); return; }
-  const sid = S.page.sid, st = S.cur;
+  const sid = S.page.sid, pfd = S.pfc[sid]; if (!pfd) return;
   setSave("saving", "이미지 올리는 중…");
   let ok = 0;
   for (const f of list) {
@@ -1374,14 +1391,13 @@ async function addPfImages(files) {
       if (Store.local) lsSet("pfimages/" + id, { data, w, h });
       else await Store.set("pfimages/" + id, { data, w, h, owner: myEmail(), createdAt: Date.now() });
       S.img[id] = data;
-      st.portfolio = st.portfolio || {};
-      (st.portfolio[sid] = st.portfolio[sid] || []).push({ id: uid("p"), type: "image", img: id, w, h, cap: "" });
+      pfd.items.push({ id: uid("p"), type: "image", img: id, w, h, cap: "" });
       ok++;
     } catch (e) { console.error(e); setSave("error", e.code ? errMsg(e) : (e.message || "이미지 저장 실패")); }
   }
   if (ok) {
-    patchStudent({ portfolio: { [sid]: clone(st.portfolio[sid]) } });
-    if (S.page.name === "pf" && S.page.sid === sid && S.cur === st) render();
+    save("portfolios/" + sid, { items: clone(pfd.items), updatedAt: Date.now() });
+    if (S.page.name === "pf" && S.page.sid === sid) render();
     toast(`이미지 ${ok}장을 올렸어요`);
   }
 }
@@ -1932,6 +1948,14 @@ const ACT = {
     saveRoadmap(); render(); toast("수강생포폴 칸을 추가했어요. 눌러서 이름·위치를 고칠 수 있어요");
   },
   pfEdit() { if (!pfCanEdit()) return; S.pfEdit = !S.pfEdit; render(); },
+  pfImport() {
+    if (!pfCanEdit()) return;
+    const sid = S.page.sid, d = S.pfc[sid]; if (!d) return;
+    const items = legacyPf(sid).map(({ from, ...it }) => it);
+    if (!items.length) return;
+    d.items.push(...items); savePf(); render();
+    toast(`포폴 ${items.length}개를 공통 포폴로 옮겼어요`);
+  },
   pfLink() {
     if (!pfCanEdit()) return;
     modal({
@@ -1943,19 +1967,19 @@ const ACT = {
         if (!url) { toast("주소를 입력하세요"); return false; }
         if (!/^https?:\/\//i.test(url)) url = "https://" + url;
         try { new URL(url); } catch (e) { toast("주소 형식을 확인하세요"); return false; }
-        const L = pfList(true);
+        const L = pfList();
         L.push({ id: uid("p"), type: "link", url, title: box.querySelector("#f-ttl").value.trim() });
         savePf(); render();
       } }]
     });
   },
   pfMove(el) {
-    const L = pfList(true), i = +el.dataset.i, j = i + (+el.dataset.d);
+    const L = pfList(), i = +el.dataset.i, j = i + (+el.dataset.d);
     if (j < 0 || j >= L.length) return;
     [L[i], L[j]] = [L[j], L[i]]; savePf(); render();
   },
   pfDel(el) {
-    const L = pfList(true), i = +el.dataset.i, it = L[i]; if (!it) return;
+    const L = pfList(), i = +el.dataset.i, it = L[i]; if (!it) return;
     confirmBox("포폴 삭제", `${i + 1}번째 항목을 삭제할까요?`, "삭제", () => {
       L.splice(i, 1); savePf();
       if (it.type === "image" && it.img) { removeDoc("pfimages/" + it.img); delete S.img[it.img]; }
@@ -2207,7 +2231,8 @@ const IN = {
   day(el) { const cur = curOf(); const d = cur?.days[+el.dataset.i]; if (d) { d[el.dataset.f] = el.value; saveCur(); } },
   sum(el) { const cur = curOf(); if (cur) { cur.summary[el.dataset.f] = el.value; saveCur(); } },
   pfcap(el) {
-    const L = pfList(true), it = L[+el.dataset.i]; if (!it) return;
+    if (!pfCanEdit()) return;
+    const L = pfList(), it = L[+el.dataset.i]; if (!it) return;
     it[el.dataset.f || "cap"] = el.value; savePf();
   },
   ex(el) {
@@ -2389,7 +2414,7 @@ async function loadAll() {
   if (LINK_ID && !S.cur && Store.admin) { const st = S.students.find(s => s.id === LINK_ID); if (st) { S.showAll = true; S.cur = st; } }
 }
 async function onAuthChange() {
-  S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {}; S.mentor = {}; S.mentorEdit = false; S.tpls = null;
+  S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {}; S.mentor = {}; S.mentorEdit = false; S.tpls = null; S.pfc = {};
   $("#app").innerHTML = `<div class="loading">불러오는 중…</div>`;
   await loadAll();
   render();
