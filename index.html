@@ -259,6 +259,49 @@ input.pf-cap{width:calc(100% - 24px);border:1px solid var(--line);border-radius:
 .yctl{position:absolute;right:0;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
 .yctl b{color:var(--ink)}
 @media screen and (max-width:860px){.yctl{position:static;transform:none;display:flex;justify-content:center;margin-top:6px}}
+/* 하단 버튼 */
+.home-actions{display:flex;justify-content:center;gap:12px;margin:6px 0 30px;flex-wrap:wrap}
+.btn.lg{height:46px;padding:0 26px;font-size:15px;border-radius:12px}
+.modal .pp{display:grid;gap:10px;padding:4px 2px}
+.modal .pp label.chk{font-size:15px}
+.modal .pp label.sub{margin-left:26px;font-size:13px;color:var(--muted)}
+/* 탐색표 */
+.ex{padding:30px 20px}
+.ex.ex-off,.exg-print{display:none}
+.ex-page{width:min(760px,100%);margin:0 auto;color:#111;font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+.ex textarea.exta{display:block;width:100%;border:1px dashed transparent;border-radius:4px;background:transparent;resize:none;overflow:hidden;font:inherit;color:inherit;line-height:1.45;padding:3px 4px;min-height:1.6em;white-space:pre-wrap}
+.ex textarea.exta:hover{border-color:#cfc6cc;background:#fbf9fa}
+.ex textarea.exta:focus{outline:none;border-color:var(--rose);border-style:solid;background:#fff}
+.ex textarea.exta::placeholder{color:#b9b0b8;font-size:12px}
+.ex textarea.exta.c,.ex textarea.exta.lab{text-align:center}
+.ex-title{border:1.5px solid #222;border-bottom:0;background:#d9d9d9;padding:10px 8px}
+.ex-title textarea.exta{font-size:24px;font-weight:700;text-align:center}
+table.ex-t{border-collapse:collapse;width:100%;font-size:15px;table-layout:fixed;background:#fff}
+.ex-t th,.ex-t td{border:1px solid #222;padding:8px 6px;vertical-align:middle}
+.ex-t th{font-weight:400;text-align:center}
+.ex-t td{text-align:left}
+.ex-t tr{height:62px}
+.ex-t td.c textarea + textarea{margin-top:2px}
+.ex-guide{margin-top:18px;font-size:13px}
+.ex-guide summary{cursor:pointer;font-weight:700;color:var(--muted)}
+.exg-h{font-size:16px;margin:12px 0 8px}
+table.exg-t{border-collapse:collapse;width:100%;font-size:14px}
+.exg-t th,.exg-t td{border:1px solid #222;padding:8px}
+.exg-t thead th{background:#d9d9d9;font-size:16px}
+.exg-t td.c{text-align:center;width:52px}
+.exg-t td:nth-child(2){width:32%}
+.exg-note{border:1px solid #222;margin-top:22px;padding:14px 18px;position:relative}
+.exg-nh{display:inline-block;background:#d9d9d9;padding:3px 14px;border-radius:4px;margin-bottom:6px}
+.exg-note ul{margin:4px 0 0;padding-left:18px;line-height:1.7}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .ex{background:#fff}}
+body.pm .ex,body.pm .exg-print{width:760px;max-width:none;padding:0}
+.exta-print{display:none}
+body.pm .ex textarea.exta{display:none!important}
+body.pm .exta-print{display:block;white-space:pre-wrap;line-height:1.45;padding:3px 4px;min-height:1.6em;text-align:left;word-break:keep-all;overflow-wrap:anywhere}
+body.pm .exta-print.c,body.pm .exta-print.lab{text-align:center}
+.ex-title .exta-print{font-size:24px;font-weight:700;text-align:center}
+body.pm[data-print~="ex"] .ex{display:block!important}
+body.pm[data-print~="exg"] .exg-print{display:block!important}
 .tpl-note{margin:0;padding:10px 16px;background:var(--field);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);text-align:center}
 .shared{margin:8px 0 0;font-size:13px;color:var(--muted)}
 .simgs{display:grid;gap:16px}
@@ -337,6 +380,7 @@ body.pm .goal.empty-goal,body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,
 
 /* ── 출력 ── */
 @page{size:A4 landscape;margin:8mm}
+@page ex{size:A4 portrait;margin:8mm}
 @media print{
   :root,:root[data-theme="dark"]{
     --bg:#fff;--paper:#fff;--ink:#222;--muted:#6f6676;--line:#ddd3da;--field:#fff;--sel:#fff0f3;--blush:#f8d3da;--rose:#e43a55;--rose-d:#b81f3c;--navy:#2d2b63;--cell-on:#ffe9ee;color-scheme:light;
@@ -351,6 +395,12 @@ body.pm .goal.empty-goal,body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,
   .track{row-gap:6px}
   .subj{padding-top:15px;padding-bottom:3px}
   .rm,.sc{width:1300px;max-width:none}
+  .ex,.exg-print{display:none!important;page:ex;width:760px;max-width:none;padding:0;break-before:page;break-inside:avoid}
+  body[data-print~="ex"] .ex{display:block!important;zoom:var(--exz,.9);margin:var(--exmt,0px) auto 0!important}
+  body[data-print~="exg"] .exg-print{display:block!important;zoom:var(--exgz,.9);margin:var(--exgmt,0px) auto 0!important}
+  .ex textarea.exta{border-color:transparent!important;background:transparent!important}
+  .ex textarea.exta::placeholder{color:transparent}
+  .home-actions,#modal,.toast,.sugg{display:none!important}
   .rm{zoom:var(--rmz,.8);margin:var(--rmmt,0px) auto 0!important}
   .sc{zoom:var(--scz,.8);margin:var(--scmt,0px) auto 0!important}
   body[data-print="page"] main > .sheet{margin:0 auto!important}
@@ -358,10 +408,11 @@ body.pm .goal.empty-goal,body.pm .no-print,body.pm .hdr-toggle,body.pm .rm-foot,
   .goal.empty-goal{display:none!important}
   .goal textarea{border:0!important;background:transparent!important;resize:none}
   .mentor{break-inside:avoid}
-  .rm + .sc{break-before:page}
+  .sc{break-before:page}
   .rm,.sc{break-inside:avoid}
-  body[data-print="rm"] .sc{display:none!important}
-  body[data-print="sc"] .rm{display:none!important}
+  body[data-print]:not([data-print~="rm"]) .rm{display:none!important}
+  body[data-print]:not([data-print~="sc"]) .sc{display:none!important}
+  body[data-print="page"] .ex,body[data-print="page"] .exg-print{display:none!important}
   body[data-print="page"] main > .sheet{width:1300px;zoom:var(--pgz,.8)}
   .tbl-wrap{overflow:visible}
   .course{break-inside:avoid}
@@ -592,7 +643,7 @@ const Store = {
 /* canEdit: 수강생 체크·일정 입력 가능 (직원 이상) / canAdmin: 로드맵·커리큘럼·학사일정 수정 가능 (관리자) */
 const canEdit = () => Store.local ? !Store.failed : Store.staff;
 const canAdmin = () => Store.local ? !Store.failed : (Store.staff && Store.admin);
-const STUDENT_KEYS = new Set(["sname", "cell", "goal", "mymentor", "pfcap"]);
+const STUDENT_KEYS = new Set(["sname", "cell", "goal", "mymentor", "pfcap", "ex"]);
 /* 월·학사일정: 관리자 [편집] 모드에서는 기본 일정표, 그 밖에는 선택한 수강생의 일정 */
 const SCOPED_KEYS = new Set(["month", "blk", "acadTitle"]);
 const tplMode = () => canAdmin() && S.mode === "edit";
@@ -760,6 +811,7 @@ function authHTML() {
 
 function renderBar() {
   $("#backBtn").disabled = !S.stack.length && S.page.name === "home";
+  const tp = document.querySelector('.topbar [data-act="print"]'); if (tp) tp.style.display = S.page.name === "home" ? "none" : "";
   const ctx = $("#ctx"), hint = $("#hint");
   $("#auth").innerHTML = authHTML();
   if (!canEdit()) {
@@ -807,7 +859,7 @@ function renderBar() {
   }
 }
 
-function homeHTML() { return roadmapHTML() + scheduleHTML(); }
+function homeHTML() { return roadmapHTML() + scheduleHTML() + exploreHTML() + homeActions(); }
 
 function roadmapHTML() {
   const R = S.roadmap, edit = S.mode === "edit";
@@ -1007,6 +1059,7 @@ function suggestNames() {
 function fillDatalist() { autosizeCells(); }
 function autosizeCells(root = document) {
   root.querySelectorAll("textarea.cellta").forEach(t => { t.style.height = "auto"; t.style.height = Math.max(22, t.scrollHeight) + "px"; });
+  root.querySelectorAll("textarea.exta").forEach(t => { if (!t.offsetParent) return; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; });
 }
 /* 시간표 칸 추천 목록 팝업 (직접 입력도 가능) */
 const Sugg = {
@@ -1321,6 +1374,96 @@ async function addPfImages(files) {
   }
 }
 
+/* ---------- 직업훈련과정 탐색표 (수강생마다 따로, 모든 칸 수정 가능) ---------- */
+S.showEx = false;
+const EX_TITLE = "국민취업지원제도 수급자『직업훈련과정 탐색표』";
+const EX_ORG = "SBS아카데미컴퓨터아트학원 (02-312-1320)\n(서울특별시 마포구 양화로 176 와이즈파크 홍대점 6층)";
+const EX_ROWS = [
+  { k: "field", l: "참여 희망 훈련분야", ph: "본인이 향후 취업 혹은 창업을 희망하는 훈련직종을 기재한다." },
+  { k: "org", l: "훈련기관명\n(소재지 주소 및 전화번호)", ph: "훈련기관의 이름과 소재지 주소, 전화번호를 기재한다.", def: EX_ORG },
+  { k: "course", l: "훈련과정명", ph: "수강을 희망하는 과정명을 기재한다." },
+  { k: "subjects", l: "주요 교과목 및 내용", ph: "수강을 희망하는 과정의 교과목 및 교육내용을 기재한다." },
+  { k: "period", l: "훈련기간\n(훈련일수/시간)", ph: "예: 26.10.19 ~ 27.04.06", period: true },
+  { k: "result", l: "훈련성과\n(취업률, 수강평 결과 등)", ph: "훈련을 받은 수강생들의 취업률과 수강평 등을 기재한다." },
+  { g: "job", gl: "수료 후\n관련\n직업", k: "job", l: "직업명", ph: "훈련 수료 후에 취업하고 싶은 직업명을 기재한다." },
+  { g: "job", k: "trait", l: "요구되는 특성\n(능력, 지식, 성격,\n학력 등)", ph: "취업하고 싶은 직업과 관련하여 요구되는 능력, 지식, 성격, 학력 등을 기재한다." },
+  { g: "job", k: "duty", l: "주요 업무\n(해당 직업에\n종사하는\n사람들의 주된\n일의 내용)", ph: "해당 직업에 종사하는 사람들의 주된 일의 내용을 기재한다." },
+  { g: "cert", gl: "관련\n자격증", k: "certName", l: "자격증명\n(시행기관)", ph: "희망 직업분야와 관련있는 자격증 명칭을 기재한다." },
+  { g: "cert", k: "certInfo", l: "자격증 개요", ph: "관련 자격증 성격에 대해 요약하여 기재한다." },
+  { g: "cert", k: "certHow", l: "시험과목, 시험일\n등 취득 방법", ph: "관련 자격증 취득을 위해 응시해야 할 시험과목, 시험일, 취득 기준 등의 정보를 간략히 기재한다." }
+];
+const EX_GUIDE = [
+  ["참여 희망 훈련직종", "본인이 향후 취업 혹은 창업을 희망하는 훈련직종을 기재한다."],
+  ["훈련기관명(소재지 및 연락처)", "훈련기관의 이름과 소재지 주소, 전화번호를 기재한다."],
+  ["훈련직종명", "수강을 희망하는 과정명을 기재한다."],
+  ["주요 교과목 및 내용", "수강을 희망하는 과정의 교과목 및 교육내용을 기재한다."],
+  ["훈련기간(훈련일수/시간)", "훈련시작일과 종료일, 훈련일수와 전체 교육시간을 기재한다."],
+  ["훈련비(수강료)", "훈련비용을 기재한다."],
+  ["훈련성과", "훈련을 받은 수강생들의 취업률과 수강평 등을 기재한다."],
+  ["직업명", "훈련 수료 후에 취업하고 싶은 직업명을 기재한다."],
+  ["요구되는 특성", "취업하고 싶은 직업과 관련하여 요구되는 능력, 지식, 성격, 학력 등을 기재한다."],
+  ["주요업무", "해당 직업에 종사하는 사람들의 주된 일의 내용을 기재한다."],
+  ["자격증명", "희망 직업분야와 관련있는 자격증 명칭을 기재한다."],
+  ["자격증 개요", "관련 자격증 성격에 대해 요약하여 기재한다."],
+  ["시험과목, 시험일 등 취득 방법", "관련 자격증 취득을 위해 응시해야 할 시험과목, 시험일, 취득 기준 등의 정보를 간략히 기재한다."]
+];
+const EX_NOTES = [
+  "훈련직종 탐색은 취업에 대비하여 어떤 직업훈련을 선택할 것인가를 좌우하는 매우 중요한 활동이므로, 활동내역을 꼼꼼히 기록하도록 안내한다.",
+  "훈련직종탐색결과표를 토대로 활동 노력이 미흡하다고 판단될 경우 추가적인 탐색 활동을 하도록 지시하거나 적정한 훈련과정을 선택할 수 있도록 지원한다."
+];
+function exCanEdit() { return !!S.cur && canEdit() && !S.studentView && (Store.local || Store.admin || isMine(S.cur)); }
+function exData() { const e = S.cur?.explore || {}; return { title: e.title, v: e.v || {}, l: e.l || {} }; }
+function exHasContent() { const e = S.cur?.explore; return !!(e && Object.values(e.v || {}).some(x => (x || "").trim())); }
+function exVal(k, def = "") { const v = exData().v; return v[k] !== undefined ? v[k] : def; }
+function exLab(k, def) { const l = exData().l; return l[k] !== undefined ? l[k] : def; }
+function exTA(f, key, val, ph, cls = "") {
+  return `<textarea class="exta ${cls}" rows="1" data-k="ex" data-f="${f}" data-key="${esc(key)}"${ph ? ` placeholder="${esc(ph)}"` : ""} aria-label="${esc((ph || key).slice(0, 30))}">${esc(val)}</textarea>`;
+}
+function exGuideHTML() {
+  return `<div class="exg-wrap"><h3 class="exg-h">○ 항목별 기재방법</h3>
+    <table class="exg-t"><thead><tr><th>번호</th><th>항 목</th><th>설 명</th></tr></thead><tbody>
+    ${EX_GUIDE.map(([a, b], i) => `<tr><td class="c">${i + 1}</td><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join("")}</tbody></table>
+    <div class="exg-note"><b class="exg-nh">유의사항</b><ul>${EX_NOTES.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div></div>`;
+}
+function exploreHTML() {
+  const st = S.cur;
+  if (!st) return "";
+  if (S.studentView && !exHasContent()) return "";
+  const d = exData();
+  let rows = "";
+  EX_ROWS.forEach((r, i) => {
+    const lab = exTA("l", r.k, exLab(r.k, r.l), "", "lab");
+    if (r.period) {
+      rows += `<tr><th colspan="2">${lab}</th>
+        <td class="c">${exTA("v", "period", exVal("period"), r.ph, "c")}${exTA("v", "days", exVal("days"), "(   일 /   시간)", "c")}</td>
+        <th>${exTA("l", "fee", exLab("fee", "훈련비\n(수강료)"), "", "lab")}</th>
+        <td class="c">${exTA("v", "fee", exVal("fee"), "예: 3,400,000원", "c")}</td></tr>`;
+      return;
+    }
+    const first = r.gl ? `<th class="grp" rowspan="${EX_ROWS.filter(x => x.g === r.g).length}">${exTA("l", "g_" + r.g, exLab("g_" + r.g, r.gl), "", "lab")}</th>` : "";
+    const labCell = r.g ? `<th>${lab}</th>` : `<th colspan="2">${lab}</th>`;
+    rows += `<tr>${first}${labCell}<td colspan="3">${exTA("v", r.k, exVal(r.k, r.def || ""), r.ph)}</td></tr>`;
+  });
+  return `<section class="sheet ex${S.showEx ? "" : " ex-off"}" id="exSec">
+    <div class="ex-page">
+      <div class="ex-title">${exTA("title", "title", d.title !== undefined ? d.title : EX_TITLE, "", "c")}</div>
+      <table class="ex-t"><colgroup><col style="width:11%"><col style="width:21%"><col style="width:32%"><col style="width:14%"><col style="width:22%"></colgroup>
+        <tbody>${rows}</tbody></table>
+      <details class="ex-guide no-print"><summary>항목별 기재방법·유의사항 보기</summary>${exGuideHTML()}</details>
+    </div>
+  </section>
+  <section class="sheet exg-print"><div class="ex-page">${exGuideHTML()}</div></section>`;
+}
+function homeActions() {
+  const st = S.cur;
+  const showExBtn = st && (!S.studentView || exHasContent());
+  const exLabel = S.showEx ? "📝 탐색표 닫기" : (canEdit() && !S.studentView ? "📝 탐색표 작성" : "📝 탐색표 보기");
+  return `<div class="home-actions no-print">
+    ${showExBtn || (canEdit() && !S.studentView) ? `<button class="btn lg" data-act="exToggle">${exLabel}</button>` : ""}
+    <button class="btn lg pri" data-act="print">🖨 출력</button>
+  </div>`;
+}
+
 /* ---------- 학생 목표 ---------- */
 function goalHTML() {
   const st = S.cur;
@@ -1331,7 +1474,7 @@ function goalHTML() {
     return `<div class="goal"><span class="goal-ic" aria-hidden="true">🎯</span><div><b>${esc(st.name || "")}${st.name ? " 님의 " : ""}목표</b><p>${esc(g)}</p></div></div>`;
   }
   return `<div class="goal${g.trim() ? "" : " empty-goal"}"><span class="goal-ic" aria-hidden="true">🎯</span><div><b>${esc(st.name || "수강생")} 님의 목표</b>
-    <textarea data-k="goal" rows="2" placeholder="예: 11월까지 시각편집과정 7과목 이수 / 편집디자이너 취업하자! 할 수 있다!" aria-label="수강생 목표">${esc(g)}</textarea></div></div>`;
+    <textarea data-k="goal" rows="2" placeholder="예: 11월까지 시각편집과정 7과목 이수 / 편집디자이너 취업 / 희망연봉 : 3000" aria-label="수강생 목표">${esc(g)}</textarea></div></div>`;
 }
 
 /* ---------- 멘토 한마디 (직원마다 따로) ---------- */
@@ -1615,14 +1758,31 @@ const ACT = {
   print() {
     document.activeElement?.blur?.();
     if (S.page.name !== "home") { doPrint("page"); return; }
-    const hasSc = !!S.schedule;
+    const hasSc = !!S.schedule, hasEx = !!S.cur && (!S.studentView || exHasContent());
     modal({
       title: "무엇을 출력할까요?",
-      body: `<p class="msg">A4 가로 한 장에 맞춰 출력됩니다.${hasSc ? "\n‘둘 다’를 고르면 로드맵 1장과 수업일정표 1장이 나옵니다." : ""}</p>`,
-      actions: [{ label: "취소" }, { label: "로드맵만", cls: hasSc ? "" : "pri", fn: () => { setTimeout(() => doPrint("rm"), 50); } }]
-        .concat(hasSc ? [{ label: "수업일정표만", fn: () => { setTimeout(() => doPrint("sc"), 50); } }, { label: "둘 다 (기본)", cls: "pri", fn: () => { setTimeout(() => doPrint("both"), 50); } }] : [])
+      body: `<p class="msg">고른 것만 출력돼요. 로드맵·수업일정표는 A4 가로, 탐색표는 A4 세로 한 장씩 가운데 정렬로 나와요.</p>
+        <div class="pp">
+          <label class="chk"><input type="checkbox" id="pp-rm" checked> 로드맵</label>
+          ${hasSc ? `<label class="chk"><input type="checkbox" id="pp-sc" checked> 수업일정표</label>` : ""}
+          ${hasEx ? `<label class="chk"><input type="checkbox" id="pp-ex"${S.showEx ? " checked" : ""}> 탐색표</label>
+          <label class="chk sub"><input type="checkbox" id="pp-exg"> 탐색표 기재방법·유의사항 페이지도 함께</label>` : ""}
+        </div>`,
+      actions: [{ label: "취소" }, {
+        label: "출력", cls: "pri", fn: box => {
+          const pick = ["rm", "sc", "ex", "exg"].filter(k => box.querySelector("#pp-" + k)?.checked);
+          if (pick.includes("exg") && !pick.includes("ex")) pick.splice(pick.indexOf("exg"), 1, "ex", "exg");
+          if (!pick.length) { toast("출력할 것을 하나 이상 고르세요"); return false; }
+          setTimeout(() => doPrint(pick.join(" ")), 50);
+        }
+      }]
     });
     setTimeout(() => $("#modal .ma button:last-child")?.focus(), 40);
+  },
+  exToggle() {
+    if (!S.cur) { if (canEdit()) ACT.newStudent(); else toast("수강생 정보가 없어요"); return; }
+    S.showEx = !S.showEx; render();
+    if (S.showEx) setTimeout(() => { $("#exSec")?.scrollIntoView({ behavior: "smooth", block: "start" }); autosizeCells(); }, 30);
   },
   mode(el) { const m = el.dataset.m; if (m === "edit" && !canAdmin()) return; S.mode = m; render(); },
   subj(el) {
@@ -1860,6 +2020,7 @@ document.addEventListener("change", e => {
     pickVisible(lsGet("pref:student"));
     render();
   } else if (e.target.id === "stuSel") {
+    S.showEx = false;
     S.cur = S.students.find(s => s.id === e.target.value) || null;
     if (S.cur) lsSet("pref:student", S.cur.id);
     render();
@@ -1936,6 +2097,14 @@ const IN = {
     const L = pfList(true), it = L[+el.dataset.i]; if (!it) return;
     it[el.dataset.f || "cap"] = el.value; savePf();
   },
+  ex(el) {
+    if (!exCanEdit()) return;
+    const st = S.cur; st.explore = st.explore || {};
+    const f = el.dataset.f, key = el.dataset.key, v = el.value;
+    if (f === "title") { st.explore.title = v; patchStudent({ explore: { title: v } }); }
+    else { (st.explore[f] = st.explore[f] || {})[key] = v; patchStudent({ explore: { [f]: { [key]: v } } }); }
+    el.style.height = "auto"; el.style.height = el.scrollHeight + "px";
+  },
   goal(el) {
     const st = ensureStudent(); st.goal = el.value; patchStudent({ goal: el.value });
     el.closest(".goal")?.classList.toggle("empty-goal", !el.value.trim());
@@ -2010,6 +2179,7 @@ document.addEventListener("pointercancel", endDrag);
 
 /* ================= 출력 (A4 가로 한 장에 맞춤) ================= */
 const PAGE_W = 1062, PAGE_H = 728, DESIGN_W = 1300;
+const EX_PAGE_W = 733, EX_PAGE_H = 1056, EX_W = 760;
 /* 출력 준비: 배치를 출력용으로 바꾸고, A4 가로 한 장에 맞는 배율을 계산 */
 let printPrep = null;
 function prepPrint(which) {
@@ -2019,6 +2189,13 @@ function prepPrint(which) {
   const b = document.body;
   b.dataset.print = which;
   b.classList.add("pm");
+  /* 탐색표 칸은 출력용 글자 상자로 바꿔서 출력 (입력칸은 출력 시 높이가 틀어지는 경우가 있음) */
+  document.querySelectorAll("textarea.exta").forEach(t => {
+    const d = document.createElement("div");
+    d.className = "exta-print " + t.className.replace("exta", "");
+    d.textContent = t.value;
+    t.after(d);
+  });
   autosizeCells();
   const SAFE = 0.96;
   /* 출력 시 글자 렌더링 차이로 높이가 몇 % 늘어나는 것을 감안 */
@@ -2045,6 +2222,14 @@ function prepPrint(which) {
     b.style.setProperty("--scz", z);
     b.style.setProperty("--scmt", topM(h, z));
   }
+  /* 탐색표: A4 세로 */
+  [[".ex", "ex"], [".exg-print", "exg"]].forEach(([sel, v]) => {
+    const el = document.querySelector(sel); if (!el) return;
+    const h = el.scrollHeight || 1;
+    const z = Math.min(EX_PAGE_W / EX_W * 0.98, EX_PAGE_H * SAFE / (h * GROW));
+    b.style.setProperty(`--${v}z`, z);
+    b.style.setProperty(`--${v}mt`, Math.max(0, (EX_PAGE_H - h * 1.035 * z) / 2) / z + "px");
+  });
   b.style.setProperty("--pgz", PAGE_W / DESIGN_W * SAFE);
   printPrep = { wasEdit };
 }
@@ -2054,6 +2239,7 @@ function endPrint() {
   printPrep = null;
   const b = document.body;
   b.classList.remove("pm"); delete b.dataset.print;
+  document.querySelectorAll(".exta-print").forEach(d => d.remove());
   const r = document.querySelector(".rm"); if (r) r.style.width = "";
   if (wasEdit) { S.mode = "edit"; render(); }
 }
@@ -2064,7 +2250,7 @@ function doPrint(which) {
   setTimeout(() => document.addEventListener("pointerdown", endPrint, { once: true }), 0);
 }
 /* Ctrl+P로 바로 인쇄해도 한 장에 맞춤 (홈 화면은 로드맵+일정표 모두) */
-window.addEventListener("beforeprint", () => { prepPrint(S.page.name === "home" ? "both" : "page"); });
+window.addEventListener("beforeprint", () => { prepPrint(S.page.name === "home" ? ("rm sc" + (S.showEx && S.cur ? " ex" : "")) : "page"); });
 window.addEventListener("afterprint", endPrint);
 
 /* 페이지를 닫기 전에 남은 저장 처리 */
