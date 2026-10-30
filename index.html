@@ -410,17 +410,18 @@ table.q-t{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixe
 .q-foot img{height:18px;width:auto;display:block}
 /* 견적서 나란히 보기 (왼쪽 로드맵 · 오른쪽 견적서) */
 main.wide{max-width:none}
-.qsplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,880px);gap:18px;align-items:start}
-.qs-left{position:sticky;top:calc(env(safe-area-inset-top,0px) + 66px);max-height:calc(100vh - 80px);overflow:auto;border-radius:16px}
-.qs-left .sheet{margin-bottom:0}
+.qsplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,860px);gap:18px;align-items:start}
+.qs-right{position:sticky;top:calc(env(safe-area-inset-top,0px) + 62px);max-height:calc(100vh - 74px);overflow:auto;border-radius:16px;box-shadow:var(--shadow)}
+.qs-right .qt{margin-bottom:0}
+.qs-right .q-tools{position:sticky;top:0;z-index:2;background:#fff;margin:-22px -20px 14px;padding:12px 20px;border-bottom:1px solid #E6E8EC;max-width:none}
+.q-panel-t{font-size:15px;color:#1F2430}
 .qs-left .rm-body{grid-template-columns:1fr;padding:6px 14px 12px}
 .qs-left .course.half{grid-column:1/-1}
 .qs-left .course{grid-template-columns:76px 1fr;gap:8px}
 .qs-left .cicon{width:44px;height:44px}
 .qs-left .subj{min-width:max(46px,min-content)}
 .qs-left .subj .nm{font-size:11.5px}
-.qs-right .qt{margin-bottom:22px}
-@media screen and (max-width:1180px){.qsplit{display:block}.qs-left{position:static;max-height:none;overflow:visible;margin-bottom:22px}}
+@media screen and (max-width:1180px){.qsplit{display:block}.qs-right{position:static;max-height:none;overflow:visible;margin-bottom:22px}}
 @media screen and (max-width:860px){.q-meta{grid-template-columns:1fr 1fr}.q-sum{grid-template-columns:1fr 1fr}.q-notes{grid-template-columns:1fr}.q-head{flex-direction:column;align-items:flex-start}.q-logo{text-align:left}.tbl-q{overflow-x:auto}}
 /* 과목 가격표 */
 .pb-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
@@ -1034,7 +1035,7 @@ function renderBar() {
 function homeHTML() {
   /* 견적서를 열면 왼쪽 로드맵(체크 과목)을 보면서 오른쪽에서 작성하는 나란히 보기 */
   if (S.showQ && qCanUse() && !S.flat)
-    return `<div class="qsplit"><div class="qs-left">${roadmapHTML()}</div><div class="qs-right">${quoteHTML()}</div></div>` + scheduleHTML() + exploreHTML() + homeActions();
+    return `<div class="qsplit"><div class="qs-left">${roadmapHTML() + scheduleHTML() + exploreHTML() + homeActions()}</div><div class="qs-right">${quoteHTML()}</div></div>`;
   return roadmapHTML() + scheduleHTML() + exploreHTML() + quoteHTML() + homeActions();
 }
 
@@ -1660,7 +1661,7 @@ function homeActions() {
   const exLabel = S.showEx ? "📝 탐색표 닫기" : (canEdit() && !S.studentView ? "📝 탐색표 작성" : "📝 탐색표 보기");
   return `<div class="home-actions no-print">
     ${showExBtn || (canEdit() && !S.studentView) ? `<button class="btn lg" data-act="exToggle">${exLabel}</button>` : ""}
-    ${canEdit() && !S.studentView ? `<button class="btn lg" data-act="quoteToggle">${S.showQ ? "💰 견적서 닫기" : "💰 견적서 작성"}</button>` : ""}
+    ${canEdit() && !S.studentView ? `<button class="btn lg${S.showQ ? " rose" : ""}" data-act="quoteToggle">${S.showQ ? "💰 견적서 닫기" : (qHas() ? "💰 견적서 보기" : "💰 견적서 작성")}</button>` : ""}
     <button class="btn lg pri" data-act="print">🖨 출력</button>
   </div>`;
 }
@@ -1820,6 +1821,16 @@ document.addEventListener("keydown", e => {
 S.showQ = false;
 S.q = {};        /* 수강생ID → 견적서 (undefined: 아직 안 불러옴, null: 불러오는 중) */
 S.pb = undefined; /* 과목 가격표 */
+S.qHas = {};     /* 수강생ID → 저장된 견적서가 있는지 (버튼 이름: 작성/보기) */
+function qHas() {
+  const st = S.cur; if (!st || !qCanUse()) return false;
+  if (S.q[st.id]) return true;
+  if (S.qHas[st.id] === undefined) {
+    S.qHas[st.id] = null;
+    Store.get("quotes/" + st.id).then(d => { S.qHas[st.id] = !!d; if (d && S.page.name === "home" && S.cur === st) render(); });
+  }
+  return !!S.qHas[st.id];
+}
 const Q_NOTICE = "1) 위 수강료는 학원내 게시되어 있는 수강료 기준이며, 교육청에 신고된 금액입니다.\n2) 국비지원대상자의 경우 증명자료를 증빙해야 적용 받을 수 있습니다.\n3) 등록금은 이벤트 기한 내 완납처리 되어야 이벤트 및 안내받은 일정으로 반배정이 가능합니다.\n   조기마감 또는 정원과열 과목 등 시간에 대한 조기배정을 원하는 경우, 담당멘토와 상의하세요.";
 const Q_WARN = "※ 무료지원 과목은 학원의 이벤트에 따라 지급된 서비스이며, 등록한 과목이 아니기에 환불에 해당하지 않습니다.\n※ 과목소진은 유료과목 먼저 소진 이후 무료과목이 소진됩니다.";
 const Q_PAY = "1) 현금/카드수납 - 학원 인포데스크에서 접수 및 결제 (현금영수증 발행가능)\n2) 계좌이체(현장강의) - 기업은행/064-126588-04-045 /예금주:㈜에스씨에이아카데미 신촌\n   계좌이체(따즈아강의) - 기업은행/ 336-103411-04-020 / 예금주 : ㈜코리아온라인클래스\n3) 홈페이지 카드결제 (담당멘토 문의)";
@@ -1889,6 +1900,7 @@ async function loadQuote(st) {
   if (!Array.isArray(q.disc)) q.disc = [];
   S.q[st.id] = q;
   if (syncQuote(q) || !d) saveQuote(q);
+  S.qHas[st.id] = true;
   render();
 }
 function saveQuote(q) { if (qCanUse()) save("quotes/" + q.sid, q); }
@@ -1970,10 +1982,12 @@ function quoteHTML() {
       <td class="op no-print"><button class="ic del" data-act="qDiscDel" data-i="${i}" aria-label="삭제">✕</button></td></tr>`).join("");
   return `<section class="sheet qt" id="qSec">
     <div class="q-tools no-print">
+      <b class="q-panel-t">💰 견적서</b>
       <span class="spacer"></span>
       <button class="btn sm" data-act="qAdd">+ 과목 줄 추가</button>
       ${hidden ? `<button class="btn sm" data-act="qUnhide">뺀 과목 ${hidden}개 다시 넣기</button>` : ""}
       <button class="btn sm" data-act="openPrice">📒 과목 가격표</button>
+      <button class="btn sm pri" data-act="qDone">✓ 작성 완료</button>
     </div>
     <div class="q-page">
       <header class="q-head">
@@ -2341,9 +2355,13 @@ const ACT = {
     if (!S.cur) { if (canEdit()) ACT.newStudent(); return; }
     if (!qCanUse()) { toast("담당 수강생의 견적서만 만들 수 있어요"); return; }
     S.showQ = !S.showQ; render();
-    setTimeout(() => { (S.showQ ? $(".qsplit") : null)?.scrollIntoView({ behavior: "smooth", block: "start" }); autosizeCells(); }, 60);
+    setTimeout(() => { if (S.showQ && window.innerWidth < 1180) $("#qSec")?.scrollIntoView({ behavior: "smooth", block: "start" }); autosizeCells(); }, 60);
   },
   openPrice() { go({ name: "price" }); },
+  qDone() {
+    const q = S.q[S.cur?.id]; if (q) { saveQuote(q); S.qHas[q.sid] = true; }
+    S.showQ = false; render(); toast("견적서를 저장했어요");
+  },
   qFree(el) { const q = S.q[S.cur?.id], r = q?.items[+el.dataset.i]; if (!r) return; r.free = !r.free; saveQuote(q); render(); },
   qOnline(el) { const q = S.q[S.cur?.id], r = q?.items[+el.dataset.i]; if (!r) return; r.online = !r.online; saveQuote(q); render(); },
   qDel(el) {
@@ -2546,7 +2564,7 @@ const ACT = {
     confirmBox("수강생 삭제", `‘${st.name || "이름 없음"}’ 수강생의 체크와 시간표를 삭제할까요?`, "삭제", () => {
       S.students = S.students.filter(x => x !== st);
       removeDoc("students/" + st.id);
-      removeDoc("quotes/" + st.id); delete S.q[st.id];
+      removeDoc("quotes/" + st.id); delete S.q[st.id]; delete S.qHas[st.id];
       S.cur = null; pickVisible(null);
       if (S.cur) lsSet("pref:student", S.cur.id);
       render(); toast("삭제했어요");
@@ -2936,7 +2954,7 @@ async function loadAll() {
   if (LINK_ID && !S.cur && Store.admin) { const st = S.students.find(s => s.id === LINK_ID); if (st) { S.showAll = true; S.cur = st; } }
 }
 async function onAuthChange() {
-  S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {}; S.mentor = {}; S.mentorEdit = false; S.tpls = null; S.pfc = {}; S.q = {}; S.pb = undefined;
+  S.stack = []; S.page = { name: "home" }; S.mode = "view"; S.curr = {}; S.mentor = {}; S.mentorEdit = false; S.tpls = null; S.pfc = {}; S.q = {}; S.pb = undefined; S.qHas = {};
   $("#app").innerHTML = `<div class="loading">불러오는 중…</div>`;
   await loadAll();
   render();
