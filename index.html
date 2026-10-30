@@ -424,7 +424,14 @@ main.wide{max-width:none}
 @media screen and (max-width:1180px){.qsplit{display:block}.qs-right{position:static;max-height:none;overflow:visible;margin-bottom:22px}}
 @media screen and (max-width:860px){.q-meta{grid-template-columns:1fr 1fr}.q-sum{grid-template-columns:1fr 1fr}.q-notes{grid-template-columns:1fr}.q-head{flex-direction:column;align-items:flex-start}.q-logo{text-align:left}.tbl-q{overflow-x:auto}}
 /* 과목 가격표 */
-.pb-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.pb-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.pb-tools .help{font-size:12px;color:var(--muted)}
+.pb-t td.dh{width:28px;text-align:center;color:var(--muted);font-size:18px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.pb-t td.dh:hover{color:var(--ink);background:var(--field)}
+body.row-dragging,body.row-dragging *{cursor:grabbing!important;user-select:none!important}
+.pb-t tr.dragging{opacity:.45;background:var(--sel)}
+.pb-t tr.drop-before td{box-shadow:inset 0 3px 0 #2F6FEB}
+.pb-t tr.drop-after td{box-shadow:inset 0 -3px 0 #2F6FEB}
 .tbl-scroll{overflow-x:auto}
 table.pb-t{width:100%;min-width:760px;border-collapse:collapse;font-size:13px}
 .pb-t th{background:var(--field);text-align:left;padding:8px;border-bottom:2px solid var(--line);font-weight:800}
@@ -959,6 +966,7 @@ function render() {
   Sugg.hide();
   if (typeof LB !== "undefined") LB.close();
   if (S.page.name === "home") fillDatalist();
+  else autosizeCells();
   if (!canEdit()) {
     app.querySelectorAll("input:not(#focusChk), textarea").forEach(i => { i.readOnly = true; i.removeAttribute("list"); i.tabIndex = -1; });
     app.querySelectorAll('input[type="date"]').forEach(i => { i.type = "text"; });
@@ -1245,7 +1253,7 @@ function fitNameInput(el) {
 }
 function autosizeCells(root = document) {
   root.querySelectorAll("textarea.cellta").forEach(t => { t.style.height = "auto"; t.style.height = Math.max(22, t.scrollHeight) + "px"; });
-  root.querySelectorAll("textarea.exta, textarea.qta").forEach(t => { if (!t.offsetParent) return; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; });
+  root.querySelectorAll("textarea.exta, textarea.qta").forEach(t => { if (!t.offsetParent) return; t.style.height = "auto"; t.style.height = (t.scrollHeight + t.offsetHeight - t.clientHeight) + "px"; });
 }
 /* 시간표 칸 추천 목록 팝업 (직접 입력도 가능) */
 const Sugg = {
@@ -1858,6 +1866,7 @@ function pbHTML() {
   const L = S.pb.items;
   const rows = L.map((it, i) => ed
     ? `<tr>
+        <td class="dh" data-drag="${i}" title="끌어서 순서 바꾸기" aria-label="끌어서 순서 바꾸기">⠿</td>
         <td><input data-k="pb" data-f="it.${i}.cat" value="${esc(it.cat || "")}" placeholder="분류" aria-label="분류"></td>
         <td><input data-k="pb" data-f="it.${i}.name" value="${esc(it.name || "")}" placeholder="과목명" aria-label="과목명"></td>
         <td><textarea class="qta" rows="1" data-k="pb" data-f="it.${i}.summary" placeholder="내용요약" aria-label="내용요약">${esc(it.summary || "")}</textarea></td>
@@ -1869,8 +1878,8 @@ function pbHTML() {
     <div class="sp-head"><div class="ribbon"></div><div class="crumb">견적서</div><h2>📒 과목 가격표</h2>
       <p class="nt">견적서를 만들 때 과목명이 같은 줄을 찾아 <b>내용요약·수강료</b>를 자동으로 넣어요. 띄어쓰기는 달라도 괜찮아요.${ed ? "" : " (수정은 관리자만 할 수 있어요)"}</p></div>
     <div class="sp-body">
-      ${ed ? `<div class="pb-tools no-print"><button class="btn" data-act="pbAdd">+ 과목 줄 추가</button><button class="btn" data-act="pbSeed">🗂 로드맵 과목명 한 번에 넣기</button></div>` : ""}
-      ${L.length ? `<div class="tbl-scroll"><table class="pb-t"><thead><tr><th style="width:15%">분류</th><th style="width:18%">과목명</th><th>내용요약</th><th style="width:14%">수강료</th><th style="width:7%">온라인</th>${ed ? '<th style="width:96px"></th>' : ""}</tr></thead><tbody>${rows}</tbody></table></div>`
+      ${ed ? `<div class="pb-tools no-print"><span class="help">⠿ 손잡이를 끌어서 순서를 바꿀 수 있어요.</span><span class="spacer"></span><button class="btn" data-act="pbAdd">+ 과목 줄 추가</button><button class="btn" data-act="pbSeed">🗂 로드맵 과목명 한 번에 넣기</button></div>` : ""}
+      ${L.length ? `<div class="tbl-scroll"><table class="pb-t"><thead><tr>${ed ? '<th style="width:28px"></th>' : ""}<th style="width:15%">분류</th><th style="width:18%">과목명</th><th>내용요약</th><th style="width:14%">수강료</th><th style="width:7%">온라인</th>${ed ? '<th style="width:96px"></th>' : ""}</tr></thead><tbody>${rows}</tbody></table></div>`
         : `<div class="empty"><p>아직 가격표가 비어 있어요.${ed ? " [로드맵 과목명 한 번에 넣기]로 시작해 보세요." : ""}</p></div>`}
       ${ed ? `<details class="pb-text"><summary>견적서 기본 안내문구 (새 견적서에 들어가요)</summary>
         <label>안내사항<textarea class="qta" data-k="pb" data-f="notice">${esc(S.pb.notice)}</textarea></label>
@@ -1878,6 +1887,57 @@ function pbHTML() {
         <label>등록금 납부 안내<textarea class="qta" data-k="pb" data-f="pay">${esc(S.pb.pay)}</textarea></label></details>` : ""}
     </div></section>`;
 }
+
+
+/* ---------- 과목 가격표: 손잡이(⠿)를 끌어서 순서 바꾸기 ---------- */
+let pbDrag = null;
+function pbDragTarget() {
+  const rows = Array.from(document.querySelectorAll(".pb-t tbody tr"));
+  rows.forEach(r => r.classList.remove("drop-before", "drop-after"));
+  let to = rows.length;
+  for (let i = 0; i < rows.length; i++) {
+    const b = rows[i].getBoundingClientRect();
+    if (pbDrag.y < b.top + b.height / 2) { to = i; break; }
+  }
+  pbDrag.to = to;
+  if (to < rows.length) rows[to].classList.add("drop-before"); else rows[rows.length - 1]?.classList.add("drop-after");
+}
+function pbAutoScroll() {
+  if (!pbDrag) return;
+  const y = pbDrag.y, top = 110, bottom = window.innerHeight - 60;
+  if (y < top) window.scrollBy(0, -Math.min(24, (top - y) / 3 + 4));
+  else if (y > bottom) window.scrollBy(0, Math.min(24, (y - bottom) / 3 + 4));
+  pbDragTarget();
+  pbDrag.raf = requestAnimationFrame(pbAutoScroll);
+}
+document.addEventListener("pointerdown", e => {
+  const h = e.target.closest?.(".pb-t [data-drag]");
+  if (!h || !canAdmin() || !S.pb || e.button > 0) return;
+  e.preventDefault();
+  const tr = h.closest("tr");
+  pbDrag = { from: +h.dataset.drag, to: +h.dataset.drag, y: e.clientY };
+  tr.classList.add("dragging");
+  document.body.classList.add("row-dragging");
+  try { h.setPointerCapture(e.pointerId); } catch (err) {}
+  pbDrag.raf = requestAnimationFrame(pbAutoScroll);
+});
+document.addEventListener("pointermove", e => { if (pbDrag) pbDrag.y = e.clientY; });
+function pbDragEnd() {
+  if (!pbDrag) return;
+  cancelAnimationFrame(pbDrag.raf);
+  const { from } = pbDrag; let { to } = pbDrag;
+  pbDrag = null;
+  document.body.classList.remove("row-dragging");
+  if (to > from) to--;
+  if (to !== from && S.pb) {
+    const [it] = S.pb.items.splice(from, 1);
+    S.pb.items.splice(to, 0, it);
+    savePb();
+  }
+  render();
+}
+document.addEventListener("pointerup", pbDragEnd);
+document.addEventListener("pointercancel", pbDragEnd);
 
 /* ---------- 견적서 데이터 ---------- */
 function newQuote(st) {
@@ -2763,7 +2823,7 @@ const IN = {
       r[k] = (k === "price" || k === "amount") ? toNum(el.value) : el.value;
       if (k === "price") el.classList.toggle("miss", r.price === null);
     } else q[p[0]] = el.value;
-    if (el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+    if (el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = (el.scrollHeight + el.offsetHeight - el.clientHeight) + "px"; }
     saveQuote(q); qUpdateTotals();
   },
   pb(el) {
@@ -2771,7 +2831,7 @@ const IN = {
     const p = el.dataset.f.split(".");
     if (p[0] === "it") { const r = S.pb.items[+p[1]]; if (!r) return; r[p[2]] = p[2] === "price" ? toNum(el.value) : el.value; }
     else S.pb[p[0]] = el.value;
-    if (el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+    if (el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = (el.scrollHeight + el.offsetHeight - el.clientHeight) + "px"; }
     savePb();
   },
   goal(el) {
