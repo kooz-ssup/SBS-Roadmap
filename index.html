@@ -384,6 +384,11 @@ table.q-t{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixe
 .ic{border:0;background:none;width:24px;height:24px;border-radius:6px;color:#9a9cb4;font-size:12px}
 .ic:hover{background:#f2f3f8;color:#333}
 .ic.del:hover{background:#ffe8ec;color:var(--rose-d)}
+.free-lbl{display:inline-block;font-size:12px;font-weight:800;color:#15803D;background:#ECFDF3;border-radius:999px;padding:2px 12px;margin-right:6px}
+.pct-amt{font-size:11px;color:#6B7280;font-variant-numeric:tabular-nums;white-space:nowrap;margin-right:auto;padding-left:2px}
+.q-t input.num.pct{max-width:52px}
+body.pm .qt .inp-print.num.pct{min-width:2.5em}
+.chip.unit{min-width:52px}
 .ic.cp{font-size:14px}
 .ic.cp:hover{background:#EEF3FF;color:#2F6FEB}
 .q-items .q-tot td{background:#fafbff;font-weight:800;color:var(--qn);padding:10px 8px;border-top:1.5px solid var(--qline)}
@@ -2015,23 +2020,23 @@ function syncQuote(q) {
   return changed;
 }
 function qCalc(q) {
+  /* 무료 과목은 금액에 넣지 않음. 할인은 ₩ 금액 또는 %(오프라인 수강료 기준) */
   const rows = q.items.filter(r => !r.hide);
   const sum = f => rows.filter(f).reduce((a, r) => a + (Number(r.price) || 0), 0);
-  const total = sum(() => true);
-  const free = sum(r => r.free);
-  const discAmt = q.disc.reduce((a, d) => a + (Number(d.amount) || 0), 0);
-  const offPaid = Math.max(0, sum(r => !r.free && !r.online) - discAmt);
-  const onPaid = sum(r => !r.free && r.online);
-  const disc = Math.min(discAmt, sum(r => !r.free && !r.online));
-  return { count: rows.length, total, freeCount: rows.filter(r => r.free).length, free, disc, off: offPaid, on: onPaid, pay: offPaid + onPaid };
+  const paidOff = sum(r => !r.free && !r.online), paidOn = sum(r => !r.free && r.online);
+  const rowDisc = q.disc.map(d => d.unit === "pct" ? Math.round(paidOff * (Number(d.rate) || 0) / 100) : (Number(d.amount) || 0));
+  const disc = Math.min(rowDisc.reduce((x, y) => x + y, 0), paidOff);
+  const off = paidOff - disc;
+  return { count: rows.length, total: paidOff + paidOn, freeCount: rows.filter(r => r.free).length, disc, rowDisc, off, on: paidOn, pay: off + paidOn };
 }
 function qUpdateTotals() {
   const q = S.q[S.cur?.id]; if (!q) return;
   const c = qCalc(q);
   const set = (k, v) => document.querySelectorAll(`[data-qt="${k}"]`).forEach(e => { e.textContent = v; });
   set("count", c.count); set("total", won(c.total));
-  set("freeCount", c.freeCount); set("free", c.free ? "- " + won(c.free) : "0"); set("disc", c.disc ? "- " + won(c.disc) : "0");
+  set("freeCount", c.freeCount); set("disc", c.disc ? "- " + won(c.disc) : "0");
   set("off", won(c.off)); set("on", won(c.on)); set("pay", won(c.pay));
+  c.rowDisc.forEach((v, i) => set("dc" + i, v ? "₩ " + won(v) : ""));
 }
 
 /* ---------- 견적서 화면 ---------- */
@@ -2053,16 +2058,18 @@ function quoteHTML() {
       <td class="no">${n + 1}</td>
       <td class="nm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.name" aria-label="과목명">${esc(r.name || "")}</textarea>${r.online ? '<span class="tag on">온라인</span>' : ""}</td>
       <td class="sm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.summary" placeholder="내용요약" aria-label="내용요약">${esc(r.summary || "")}</textarea></td>
-      <td class="pr"><div class="prw">${r.free ? '<span class="tag fr">무료</span>' : ""}<span class="cur">₩</span><input class="num${noPrice ? " miss" : ""}" inputmode="numeric" data-k="q" data-f="it.${i}.price" value="${esc(won(r.price))}" placeholder="가격 입력" aria-label="수강료"></div></td>
+      <td class="pr">${r.free ? '<div class="prw"><span class="free-lbl">무료</span></div>' : `<div class="prw"><span class="cur">₩</span><input class="num${noPrice ? " miss" : ""}" inputmode="numeric" data-k="q" data-f="it.${i}.price" value="${esc(won(r.price))}" placeholder="가격 입력" aria-label="수강료"></div>`}</td>
       <td class="op no-print"><button class="chip${r.free ? " on" : ""}" data-act="qFree" data-i="${i}" title="무료지원 과목으로 표시">무료</button><button class="chip${r.online ? " on" : ""}" data-act="qOnline" data-i="${i}" title="온라인 강의(따즈아 등)로 표시">온라인</button><button class="ic cp" data-act="qCopy" data-i="${i}" title="이 과목 한 번 더 (복사)" aria-label="이 과목 복사">⧉</button><button class="ic del" data-act="qDel" data-i="${i}" aria-label="이 줄 빼기">✕</button></td></tr>`;
   }).join("");
   const hidden = q.items.filter(r => r.hide).length;
   const discRows = q.disc.map((d, i) => `<tr>
       <td><input data-k="q" data-f="dc.${i}.type" value="${esc(d.type || "")}" placeholder="예: 제휴대학" aria-label="지원/할인"></td>
       <td><input data-k="q" data-f="dc.${i}.detail" value="${esc(d.detail || "")}" placeholder="예: 2과목" aria-label="상세내역"></td>
-      <td class="pr"><div class="prw"><span class="cur">₩</span><input class="num" inputmode="numeric" data-k="q" data-f="dc.${i}.amount" value="${esc(won(d.amount))}" placeholder="금액 할인 시" aria-label="할인금액"></div></td>
+      <td class="pr">${d.unit === "pct"
+        ? `<div class="prw"><span class="pct-amt" data-qt="dc${i}">${c.rowDisc[i] ? "₩ " + won(c.rowDisc[i]) : ""}</span><input class="num pct" inputmode="decimal" data-k="q" data-f="dc.${i}.rate" value="${esc(d.rate ?? "")}" placeholder="0" aria-label="할인율"><span class="cur">%</span></div>`
+        : `<div class="prw"><span class="cur">₩</span><input class="num" inputmode="numeric" data-k="q" data-f="dc.${i}.amount" value="${esc(won(d.amount))}" placeholder="0" aria-label="할인금액"></div>`}</td>
       <td><input data-k="q" data-f="dc.${i}.note" value="${esc(d.note || "")}" placeholder="비고" aria-label="비고"></td>
-      <td class="op no-print"><button class="ic del" data-act="qDiscDel" data-i="${i}" aria-label="삭제">✕</button></td></tr>`).join("");
+      <td class="op no-print"><button class="chip unit" data-act="qUnit" data-i="${i}" title="금액(₩) 할인 ↔ 비율(%) 할인">${d.unit === "pct" ? "% 할인" : "₩ 할인"}</button><button class="ic del" data-act="qDiscDel" data-i="${i}" aria-label="삭제">✕</button></td></tr>`).join("");
   return `<section class="sheet qt" id="qSec">
     <div class="q-tools no-print">
       <b class="q-panel-t">💰 견적서</b>
@@ -2092,14 +2099,14 @@ function quoteHTML() {
       </table>
 
       <h3 class="q-h">무료지원 및 할인내역</h3>
-      <table class="q-t q-disc"><colgroup><col style="width:22%"><col style="width:22%"><col style="width:22%"><col><col class="no-print" style="width:44px"></colgroup>
+      <table class="q-t q-disc"><colgroup><col style="width:22%"><col style="width:22%"><col style="width:22%"><col><col class="no-print" style="width:96px"></colgroup>
         <thead><tr><th>지원/할인</th><th>상세내역</th><th class="r">할인금액</th><th>비고</th><th class="no-print"></th></tr></thead>
         <tbody>${discRows}</tbody></table>
       <div class="no-print q-addrow"><button class="btn sm" data-act="qDiscAdd">+ 할인 줄 추가</button></div>
 
       <div class="q-sum">
         <div class="q-card"><span>총 수강료</span><b>₩ <i data-qt="total">${won(c.total)}</i></b></div>
-        <div class="q-card minus"><span>무료지원 <em><i data-qt="freeCount">${c.freeCount}</i>과목</em></span><b>₩ <i data-qt="free">${c.free ? "- " + won(c.free) : "0"}</i></b></div>
+        <div class="q-card minus"><span>무료지원</span><b><i data-qt="freeCount">${c.freeCount}</i>과목</b></div>
         <div class="q-card minus"><span>할인</span><b>₩ <i data-qt="disc">${c.disc ? "- " + won(c.disc) : "0"}</i></b></div>
         <div class="q-card pay"><span>납부할 수강료</span><b>₩ <i data-qt="pay">${won(c.pay)}</i></b>
           <small>오프라인 ₩ <i data-qt="off">${won(c.off)}</i> · 온라인 ₩ <i data-qt="on">${won(c.on)}</i></small></div>
@@ -2455,6 +2462,12 @@ const ACT = {
     const q = S.q[S.cur?.id], i = +el.dataset.i, r = q?.items[i]; if (!r) return;
     if (r.src && !r.copy) r.hide = true; else q.items.splice(i, 1);
     saveQuote(q); render();
+  },
+  qUnit(el) {
+    const q = S.q[S.cur?.id], d = q?.disc[+el.dataset.i]; if (!d) return;
+    d.unit = d.unit === "pct" ? "won" : "pct";
+    saveQuote(q); render();
+    setTimeout(() => document.querySelector(`[data-f="dc.${el.dataset.i}.${d.unit === "pct" ? "rate" : "amount"}"]`)?.focus(), 30);
   },
   qCopy(el) {
     const q = S.q[S.cur?.id], i = +el.dataset.i, r = q?.items[i]; if (!r) return;
@@ -2864,7 +2877,9 @@ const IN = {
     if (p[0] === "it" || p[0] === "dc") {
       const r = (p[0] === "it" ? q.items : q.disc)[+p[1]]; if (!r) return;
       const k = p[2];
-      r[k] = (k === "price" || k === "amount") ? toNum(el.value) : el.value;
+      if (k === "amount" && /%\s*$/.test(el.value)) { r.unit = "pct"; r.rate = parseFloat(el.value) || 0; r.amount = null; saveQuote(q); render(); setTimeout(() => document.querySelector(`[data-f="dc.${p[1]}.rate"]`)?.focus(), 30); return; }
+      if (k === "rate") { const v = parseFloat(String(el.value).replace(/[^\d.]/g, "")); r.rate = isNaN(v) ? null : Math.min(100, v); }
+      else r[k] = (k === "price" || k === "amount") ? toNum(el.value) : el.value;
       if (k === "price") el.classList.toggle("miss", r.price === null);
     } else q[p[0]] = el.value;
     if (el.tagName === "TEXTAREA") { el.style.height = "auto"; el.style.height = (el.scrollHeight + el.offsetHeight - el.clientHeight) + "px"; }
