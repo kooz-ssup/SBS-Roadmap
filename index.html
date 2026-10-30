@@ -384,6 +384,8 @@ table.q-t{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixe
 .ic{border:0;background:none;width:24px;height:24px;border-radius:6px;color:#9a9cb4;font-size:12px}
 .ic:hover{background:#f2f3f8;color:#333}
 .ic.del:hover{background:#ffe8ec;color:var(--rose-d)}
+.ic.cp{font-size:14px}
+.ic.cp:hover{background:#EEF3FF;color:#2F6FEB}
 .q-items .q-tot td{background:#fafbff;font-weight:800;color:var(--qn);padding:10px 8px;border-top:1.5px solid var(--qline)}
 .q-items .q-tot td small{font-weight:500;color:#8a8ca4}
 .q-items .q-tot td.pr{text-align:right;padding-right:12px;font-variant-numeric:tabular-nums}
@@ -1989,21 +1991,27 @@ function qWanted() {
   return out;
 }
 function syncQuote(q) {
+  /* 체크한 과목 기준으로 맞추되, 직접 넣은 줄·복사한 줄의 위치는 그대로 둠 */
   const key = r => r.src + "|" + normName(r.name);
-  const autoOld = q.items.filter(r => r.src);
-  const map = new Map(autoOld.map(r => [key(r), r]));
-  const auto = qWanted().map(w => {
-    const o = map.get(key(w));
-    const pb = pbFind(w.name);
-    if (o) {
-      if ((o.price === null || o.price === undefined) && pb && pb.price != null) o.price = pb.price;
-      if (!o.summary && pb?.summary) o.summary = pb.summary;
-      return o;
-    }
-    return { id: uid("q"), src: w.src, cat: pb?.cat || w.course, name: w.name, summary: pb?.summary || "", price: pb?.price ?? null, free: false, online: !!pb?.online, hide: false };
+  const want = qWanted(), wantKeys = new Set(want.map(key));
+  let changed = false;
+  const kept = q.items.filter(r => { if (!r.src) return true; const ok = wantKeys.has(key(r)); if (!ok) changed = true; return ok; });
+  kept.forEach(r => {
+    if (!r.src || r.copy) return;
+    const pb = pbFind(r.name);
+    if ((r.price === null || r.price === undefined || r.price === "") && pb && pb.price != null) { r.price = pb.price; changed = true; }
+    if (!r.summary && pb?.summary) { r.summary = pb.summary; changed = true; }
   });
-  const changed = auto.length !== autoOld.length || auto.some((r, i) => r !== autoOld[i]);
-  q.items = auto.concat(q.items.filter(r => !r.src));
+  const have = new Set(kept.filter(r => r.src && !r.copy).map(key));
+  want.forEach((w, wi) => {
+    if (have.has(key(w))) return;
+    const pb = pbFind(w.name);
+    const row = { id: uid("q"), src: w.src, cat: pb?.cat || w.course, name: w.name, summary: pb?.summary || "", price: pb?.price ?? null, free: false, online: !!pb?.online, hide: false };
+    let pos = 0;
+    for (let j = wi - 1; j >= 0 && !pos; j--) { const k = key(want[j]); kept.forEach((r, ri) => { if (r.src && key(r) === k) pos = ri + 1; }); }
+    kept.splice(pos, 0, row); have.add(key(w)); changed = true;
+  });
+  q.items = kept;
   return changed;
 }
 function qCalc(q) {
@@ -2046,7 +2054,7 @@ function quoteHTML() {
       <td class="nm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.name" aria-label="과목명">${esc(r.name || "")}</textarea>${r.online ? '<span class="tag on">온라인</span>' : ""}</td>
       <td class="sm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.summary" placeholder="내용요약" aria-label="내용요약">${esc(r.summary || "")}</textarea></td>
       <td class="pr"><div class="prw">${r.free ? '<span class="tag fr">무료</span>' : ""}<span class="cur">₩</span><input class="num${noPrice ? " miss" : ""}" inputmode="numeric" data-k="q" data-f="it.${i}.price" value="${esc(won(r.price))}" placeholder="가격 입력" aria-label="수강료"></div></td>
-      <td class="op no-print"><button class="chip${r.free ? " on" : ""}" data-act="qFree" data-i="${i}" title="무료지원 과목으로 표시">무료</button><button class="chip${r.online ? " on" : ""}" data-act="qOnline" data-i="${i}" title="온라인 강의(따즈아 등)로 표시">온라인</button><button class="ic del" data-act="qDel" data-i="${i}" aria-label="이 줄 빼기">✕</button></td></tr>`;
+      <td class="op no-print"><button class="chip${r.free ? " on" : ""}" data-act="qFree" data-i="${i}" title="무료지원 과목으로 표시">무료</button><button class="chip${r.online ? " on" : ""}" data-act="qOnline" data-i="${i}" title="온라인 강의(따즈아 등)로 표시">온라인</button><button class="ic cp" data-act="qCopy" data-i="${i}" title="이 과목 한 번 더 (복사)" aria-label="이 과목 복사">⧉</button><button class="ic del" data-act="qDel" data-i="${i}" aria-label="이 줄 빼기">✕</button></td></tr>`;
   }).join("");
   const hidden = q.items.filter(r => r.hide).length;
   const discRows = q.disc.map((d, i) => `<tr>
@@ -2077,7 +2085,7 @@ function quoteHTML() {
       </div>
 
       <h3 class="q-h">등록 과목 <span class="pill"><b data-qt="count">${c.count}</b>과목</span></h3>
-      <table class="q-t q-items"><colgroup><col style="width:13%"><col style="width:4%"><col style="width:14%"><col><col style="width:13%"><col class="no-print" style="width:128px"></colgroup>
+      <table class="q-t q-items"><colgroup><col style="width:13%"><col style="width:4%"><col style="width:14%"><col><col style="width:13%"><col class="no-print" style="width:152px"></colgroup>
         <thead><tr><th>분류</th><th>No.</th><th>과목명</th><th>내용요약</th><th class="r">수강료</th><th class="no-print"></th></tr></thead>
         <tbody>${itemRows || `<tr><td colspan="6" class="q-empty">수강 과목을 체크하면 여기에 자동으로 들어가요.</td></tr>`}</tbody>
         <tbody class="q-tot"><tr><td colspan="4">총 수강료</td><td class="pr"><b>₩ <span data-qt="total">${won(c.total)}</span></b></td><td class="no-print"></td></tr></tbody>
@@ -2445,8 +2453,17 @@ const ACT = {
   qOnline(el) { const q = S.q[S.cur?.id], r = q?.items[+el.dataset.i]; if (!r) return; r.online = !r.online; saveQuote(q); render(); },
   qDel(el) {
     const q = S.q[S.cur?.id], i = +el.dataset.i, r = q?.items[i]; if (!r) return;
-    if (r.src) r.hide = true; else q.items.splice(i, 1);
+    if (r.src && !r.copy) r.hide = true; else q.items.splice(i, 1);
     saveQuote(q); render();
+  },
+  qCopy(el) {
+    const q = S.q[S.cur?.id], i = +el.dataset.i, r = q?.items[i]; if (!r) return;
+    let at = i + 1;
+    while (at < q.items.length && q.items[at].name === r.name && q.items[at].src === r.src) at++;
+    q.items.splice(at, 0, Object.assign({}, r, { id: uid("q"), copy: !!r.src, free: false, hide: false }));
+    saveQuote(q); render();
+    const n = q.items.filter(x => !x.hide && x.name === r.name && x.src === r.src).length;
+    toast(`‘${r.name}’ ${n}개가 됐어요`);
   },
   qUnhide() { const q = S.q[S.cur?.id]; if (!q) return; q.items.forEach(r => { r.hide = false; }); saveQuote(q); render(); },
   qAdd() {
