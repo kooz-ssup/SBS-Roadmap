@@ -147,7 +147,7 @@ main{max-width:1320px;margin:0 auto;padding:14px 16px 60px}
 .sc{padding:0 0 18px}
 .sc-head{background:#8eaadf;color:#1d2340;text-align:center;padding:10px 16px 8px}
 .sc-head .ttl{font-size:21px;font-weight:800;display:flex;justify-content:center;align-items:baseline;gap:4px;flex-wrap:wrap}
-.sc-head .ttl input{font-weight:800;text-align:right;width:9em}
+.sc-head .ttl input{font-weight:800;text-align:center;width:4em;max-width:60vw;padding:2px 0}
 .sc-head .note input{width:100%;text-align:center;font-size:13px}
 .sc input{background:transparent;border:1px solid transparent;border-radius:5px;padding:2px 4px;min-width:0}
 .sc input:hover{border-color:var(--line);background:var(--field)}
@@ -1090,7 +1090,15 @@ function suggestNames() {
   }));
   return names;
 }
-function fillDatalist() { autosizeCells(); }
+function fillDatalist() { autosizeCells(); const n = document.querySelector('[data-k="sname"]'); if (n) fitNameInput(n); }
+/* 수업일정 제목의 이름 칸을 글자 길이에 맞춰 줄여서 제목 전체가 가운데에 오게 함 */
+function fitNameInput(el) {
+  const c = fitNameInput.ctx || (fitNameInput.ctx = document.createElement("canvas").getContext("2d"));
+  const cs = getComputedStyle(el);
+  c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const w = c.measureText(el.value || el.placeholder || "").width;
+  el.style.width = Math.ceil(w + 6) + "px";
+}
 function autosizeCells(root = document) {
   root.querySelectorAll("textarea.cellta").forEach(t => { t.style.height = "auto"; t.style.height = Math.max(22, t.scrollHeight) + "px"; });
   root.querySelectorAll("textarea.exta").forEach(t => { if (!t.offsetParent) return; t.style.height = "auto"; t.style.height = t.scrollHeight + "px"; });
@@ -2240,6 +2248,7 @@ document.addEventListener("change", e => {
 const IN = {
   sname(el) {
     const st = ensureStudent(); st.name = el.value; patchStudent({ name: el.value });
+    fitNameInput(el);
     const sel = $("#stuSel");
     if (sel) {
       let o = sel.querySelector(`option[value="${CSS.escape(st.id)}"]`);
