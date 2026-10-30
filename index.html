@@ -359,17 +359,18 @@ table.q-t{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixe
 .q-t th{background:var(--ql);color:#4B5563;font-size:12px;font-weight:700;padding:8px 6px;text-align:left}
 .q-t th.r{text-align:right;padding-right:12px}
 .q-t td{border-top:1px solid var(--qline);padding:4px 4px;vertical-align:middle}
-.q-items tr.rep td.cat input{color:transparent}
-.q-items tr.rep td.cat input:focus{color:inherit}
+.q-items tr.rep td.cat textarea{color:transparent}
+.q-items tr.rep td.cat textarea:focus{color:inherit}
 .q-items tr.rep td{border-top-color:#f1f2f7}
-.q-items td.cat input{font-weight:700;color:var(--qn);font-size:12px}
+.q-items td.cat textarea{font-weight:700;color:var(--qn);font-size:12px;line-height:1.35;word-break:keep-all}
 .q-items td.no{text-align:center;color:#9a9cb4;font-size:12px}
 .q-items td.nm{font-weight:700}
-.q-items td.nm input{font-weight:700}
-.q-items td.sm textarea{color:#6B7280;font-size:12px}
+.q-items td.nm textarea{font-weight:700;line-height:1.35;word-break:keep-all}
+.q-items td.nm .tag.on{margin:2px 0 0 4px}
+.q-items td.sm textarea{color:#4B5563;font-size:12.5px;line-height:1.5;word-break:keep-all}
 .q-t td.pr .prw{display:flex;align-items:center;gap:2px;justify-content:flex-end}
 .q-t td.pr .cur{color:#9a9cb4;font-size:12px}
-.q-t input.num{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;width:100%;max-width:110px}
+.q-t input.num{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;width:100%;max-width:96px}
 .q-t input.num.miss{background:#F9FAFB;border-color:#E5E7EB}
 .q-items tr.free input.num{text-decoration:line-through;color:#a3a5bb}
 .tag{display:inline-block;font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;white-space:nowrap}
@@ -377,7 +378,7 @@ table.q-t{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixe
 .tag.on{background:#e9f0ff;color:#2b53c7;margin-left:4px}
 .q-items .nmw{display:flex;align-items:center;gap:2px}
 .q-t td.op{white-space:nowrap;text-align:right}
-.chip{border:1px solid var(--qline);background:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:3px 7px;color:#6a6c8a;margin-left:2px}
+.chip{border:1px solid var(--qline);background:#fff;border-radius:999px;font-size:11px;font-weight:700;padding:3px 6px;color:#6a6c8a;margin-left:2px}
 .q-t td.op{padding-right:6px}
 .chip.on{background:var(--qn);border-color:var(--qn);color:#fff}
 .ic{border:0;background:none;width:24px;height:24px;border-radius:6px;color:#9a9cb4;font-size:12px}
@@ -456,13 +457,13 @@ body.pm .qt .inp-print{display:block;padding:3px 5px;min-height:1.5em;white-spac
 body.pm .qt .inp-print.num{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;flex:0 0 auto;min-width:5em}
 body.pm .qt .inp-print.q-title{font-size:26px;font-weight:800;color:#fff;padding:2px 0}
 body.pm .qt .q-meta .inp-print{font-weight:700;color:#1F2430;padding:1px 2px}
-body.pm .qt .q-items td.nm .inp-print{font-weight:700}
-body.pm .qt .q-items td.cat .inp-print{font-weight:700;color:#1F2430;font-size:12px}
-body.pm .qt .q-items tr.rep td.cat .inp-print{color:transparent}
+body.pm .qt .q-items td.nm .exta-print{font-weight:700;font-size:13px;color:#1F2430;line-height:1.35}
+body.pm .qt .q-items td.cat .exta-print{font-weight:700;color:#1F2430;font-size:11.5px;line-height:1.35}
+body.pm .qt .q-items tr.rep td.cat .exta-print{color:transparent}
 body.pm .qt .q-items tr.free .inp-print.num{text-decoration:line-through;color:#a3a5bb}
 body.pm .qt .exta-print{font-size:11.5px;color:#4B5563;line-height:1.55;padding:3px 5px}
 body.pm .qt .exta-print.warn{color:#DC2626;font-weight:700}
-body.pm .q-items .exta-print{font-size:12px;color:#6B7280}
+body.pm .q-items .exta-print{font-size:12.5px;color:#4B5563;line-height:1.5}
 .tpl-note{margin:0;padding:10px 16px;background:var(--field);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);text-align:center}
 .shared{margin:8px 0 0;font-size:13px;color:var(--muted)}
 .simgs{display:grid;gap:16px}
@@ -2026,9 +2027,9 @@ function quoteHTML() {
     const rep = r.cat === prevCat; prevCat = r.cat;
     const noPrice = r.price === null || r.price === undefined || r.price === "";
     return `<tr class="${r.free ? "free" : ""}${rep ? " rep" : " gstart"}">
-      <td class="cat"><input data-k="q" data-f="it.${i}.cat" value="${esc(r.cat || "")}" aria-label="분류"></td>
+      <td class="cat"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.cat" aria-label="분류">${esc(r.cat || "")}</textarea></td>
       <td class="no">${n + 1}</td>
-      <td class="nm"><div class="nmw"><input data-k="q" data-f="it.${i}.name" value="${esc(r.name || "")}" aria-label="과목명">${r.online ? '<span class="tag on">온라인</span>' : ""}</div></td>
+      <td class="nm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.name" aria-label="과목명">${esc(r.name || "")}</textarea>${r.online ? '<span class="tag on">온라인</span>' : ""}</td>
       <td class="sm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.summary" placeholder="내용요약" aria-label="내용요약">${esc(r.summary || "")}</textarea></td>
       <td class="pr"><div class="prw">${r.free ? '<span class="tag fr">무료</span>' : ""}<span class="cur">₩</span><input class="num${noPrice ? " miss" : ""}" inputmode="numeric" data-k="q" data-f="it.${i}.price" value="${esc(won(r.price))}" placeholder="가격 입력" aria-label="수강료"></div></td>
       <td class="op no-print"><button class="chip${r.free ? " on" : ""}" data-act="qFree" data-i="${i}" title="무료지원 과목으로 표시">무료</button><button class="chip${r.online ? " on" : ""}" data-act="qOnline" data-i="${i}" title="온라인 강의(따즈아 등)로 표시">온라인</button><button class="ic del" data-act="qDel" data-i="${i}" aria-label="이 줄 빼기">✕</button></td></tr>`;
@@ -2062,7 +2063,7 @@ function quoteHTML() {
       </div>
 
       <h3 class="q-h">등록 과목 <span class="pill"><b data-qt="count">${c.count}</b>과목</span></h3>
-      <table class="q-t q-items"><colgroup><col style="width:15%"><col style="width:5%"><col style="width:20%"><col><col style="width:16%"><col class="no-print" style="width:136px"></colgroup>
+      <table class="q-t q-items"><colgroup><col style="width:13%"><col style="width:4%"><col style="width:14%"><col><col style="width:13%"><col class="no-print" style="width:128px"></colgroup>
         <thead><tr><th>분류</th><th>No.</th><th>과목명</th><th>내용요약</th><th class="r">수강료</th><th class="no-print"></th></tr></thead>
         <tbody>${itemRows || `<tr><td colspan="6" class="q-empty">수강 과목을 체크하면 여기에 자동으로 들어가요.</td></tr>`}</tbody>
         <tbody class="q-tot"><tr><td colspan="4">총 수강료</td><td class="pr"><b>₩ <span data-qt="total">${won(c.total)}</span></b></td><td class="no-print"></td></tr></tbody>
