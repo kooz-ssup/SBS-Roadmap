@@ -427,6 +427,7 @@ main.wide{max-width:none}
 /* 과목 가격표 */
 .pb-tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
 .pb-tools .help{font-size:12px;color:var(--muted)}
+.pb-orphan{display:inline-block;margin:2px 0 0 6px;font-size:10.5px;font-weight:700;color:#92400E;background:#FEF3C7;border-radius:999px;padding:1px 7px}
 .pb-t td.dh{width:28px;text-align:center;color:var(--muted);font-size:18px;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
 .pb-t td.dh:hover{color:var(--ink);background:var(--field)}
 body.row-dragging,body.row-dragging *{cursor:grabbing!important;user-select:none!important}
@@ -1230,9 +1231,20 @@ function monthNum(v) {
   return n >= 1 && n <= 12 ? n : 0;
 }
 /* 시간표 칸 추천 목록: 체크한 과목의 ‘수업일정표 항목’(없으면 과목명 단계) */
+/* 시간표·견적서에 쓰는 ‘한 달 단위 수업’ 목록
+   1) 수업일정표 항목이 있으면 그대로 (쉼표로 구분)
+   2) 없고 단계·회차 칸에 쉼표가 있으면 그 이름들 (예: 포토샵, AI포토웍스 → 2과목)
+   3) 그 밖에는 ‘과목명 단계’ 한 개 (예: AI프롬프트 1~2) */
 function schedItems(s) {
-  if (s.sched && s.sched.trim()) return s.sched.split(",").map(x => x.trim()).filter(Boolean);
+  const split = t => t.split(",").map(x => x.trim()).filter(Boolean);
+  if (s.sched && s.sched.trim()) return split(s.sched);
+  if (s.level && s.level.includes(",")) return split(s.level.replace(/\n/g, " "));
   return [[s.name, s.level].filter(Boolean).join(" ").replace(/\n/g, " ")];
+}
+function allSchedNames() {
+  const set = new Set();
+  (S.roadmap?.courses || []).forEach(c => c.subjects.forEach(s => { if (s.kind !== "pf") schedItems(s).forEach(n => set.add(normName(n))); }));
+  return set;
 }
 function suggestNames() {
   if (!S.roadmap) return [];
@@ -1865,11 +1877,13 @@ function pbHTML() {
   if (!S.pb) { loadPb(); return `<section class="sheet"><div class="loading">가격표 불러오는 중…</div></section>`; }
   const ed = canAdmin();
   const L = S.pb.items;
+  const live = allSchedNames();
+  const orphans = L.filter(it => it.name && !live.has(normName(it.name))).length;
   const rows = L.map((it, i) => ed
     ? `<tr>
         <td class="dh" data-drag="${i}" title="끌어서 순서 바꾸기" aria-label="끌어서 순서 바꾸기">⠿</td>
         <td><input data-k="pb" data-f="it.${i}.cat" value="${esc(it.cat || "")}" placeholder="분류" aria-label="분류"></td>
-        <td><input data-k="pb" data-f="it.${i}.name" value="${esc(it.name || "")}" placeholder="과목명" aria-label="과목명"></td>
+        <td><input data-k="pb" data-f="it.${i}.name" value="${esc(it.name || "")}" placeholder="과목명" aria-label="과목명">${it.name && !live.has(normName(it.name)) ? '<span class="pb-orphan" title="로드맵의 수업일정표 항목에 이 이름이 없어요. 체크한 과목으로 자동 기입되지 않아요">로드맵에 없음</span>' : ""}</td>
         <td><textarea class="qta" rows="1" data-k="pb" data-f="it.${i}.summary" placeholder="내용요약" aria-label="내용요약">${esc(it.summary || "")}</textarea></td>
         <td><input class="num" inputmode="numeric" data-k="pb" data-f="it.${i}.price" value="${esc(won(it.price))}" placeholder="0" aria-label="수강료"></td>
         <td class="c"><input type="checkbox" data-act="pbOnline" data-i="${i}"${it.online ? " checked" : ""} aria-label="온라인 강의"></td>
@@ -1879,7 +1893,7 @@ function pbHTML() {
     <div class="sp-head"><div class="ribbon"></div><div class="crumb">견적서</div><h2>📒 과목 가격표</h2>
       <p class="nt">견적서를 만들 때 과목명이 같은 줄을 찾아 <b>내용요약·수강료</b>를 자동으로 넣어요. 띄어쓰기는 달라도 괜찮아요.${ed ? "" : " (수정은 관리자만 할 수 있어요)"}</p></div>
     <div class="sp-body">
-      ${ed ? `<div class="pb-tools no-print"><span class="help">⠿ 손잡이를 끌어서 순서를 바꿀 수 있어요.</span><span class="spacer"></span><button class="btn" data-act="pbAdd">+ 과목 줄 추가</button><button class="btn" data-act="pbSeed">🗂 로드맵 과목명 한 번에 넣기</button></div>` : ""}
+      ${ed ? `<div class="pb-tools no-print"><span class="help">⠿ 손잡이를 끌어서 순서를 바꿀 수 있어요.</span><span class="spacer"></span><button class="btn" data-act="pbAdd">+ 과목 줄 추가</button><button class="btn" data-act="pbSeed">🗂 로드맵 과목명 한 번에 넣기</button>${orphans ? `<button class="btn danger" data-act="pbClean">로드맵에 없는 줄 ${orphans}개 정리</button>` : ""}</div>` : ""}
       ${L.length ? `<div class="tbl-scroll"><table class="pb-t"><thead><tr>${ed ? '<th style="width:28px"></th>' : ""}<th style="width:15%">분류</th><th style="width:18%">과목명</th><th>내용요약</th><th style="width:14%">수강료</th><th style="width:7%">온라인</th>${ed ? '<th style="width:96px"></th>' : ""}</tr></thead><tbody>${rows}</tbody></table></div>`
         : `<div class="empty"><p>아직 가격표가 비어 있어요.${ed ? " [로드맵 과목명 한 번에 넣기]로 시작해 보세요." : ""}</p></div>`}
       ${ed ? `<details class="pb-text"><summary>견적서 기본 안내문구 (새 견적서에 들어가요)</summary>
@@ -2279,7 +2293,11 @@ function editSubject(c, s) {
       o.br = box.querySelector("#f-br").checked;
       o.sched = box.querySelector("#f-sched").value.split(/[,\n]/).map(x => x.trim()).filter(Boolean).join(", ");
       if (isNew) c.subjects.push(o);
+      /* 같은 과목(과목명+단계)은 다른 과정에서도 수업일정표 항목을 똑같이 */
+      let same = 0;
+      S.roadmap.courses.forEach(cc => cc.subjects.forEach(ss => { if (ss !== o && subjKey(ss) === subjKey(o) && (ss.sched || "") !== o.sched) { ss.sched = o.sched; same++; } }));
       saveRoadmap(); render();
+      if (same) toast(`같은 과목 ${same}곳의 수업일정표 항목도 똑같이 바꿨어요`);
       /* 과목명을 바꿨을 때, 새 이름의 커리큘럼이 없으면 기존 커리큘럼을 이어서 사용 */
       const newKey = subjKey(o);
       if (oldKey && oldKey !== newKey) (async () => {
@@ -2380,7 +2398,7 @@ function back() {
 /* ================= 클릭 동작 ================= */
 const ADMIN_ACTS = new Set(["addSubj", "addCourse", "cMove", "cDel", "loadRoadmap", "resetRoadmap", "loadSchedule", "resetSchedule",
   "addMonth", "delMonth", "addRow", "delRow", "addGroup", "delGroup",
-  "pbAdd", "pbDel", "pbMove", "pbSeed", "pbOnline",
+  "pbAdd", "pbDel", "pbMove", "pbSeed", "pbOnline", "pbClean",
   "subjEdit", "dayAdd", "dayAddMany", "dayMove", "dayDel", "imgMove", "imgDel"]);
 const ACT = {
   home() { S.stack = []; S.page = { name: "home" }; S.subjEdit = false; render(); window.scrollTo(0, 0); },
@@ -2459,6 +2477,14 @@ const ACT = {
   },
   pbMove(el) { const L = S.pb.items, i = +el.dataset.i, j = i + (+el.dataset.d); if (j < 0 || j >= L.length) return; [L[i], L[j]] = [L[j], L[i]]; savePb(); render(); },
   pbOnline(el) { const it = S.pb.items[+el.dataset.i]; if (!it) return; it.online = !it.online; savePb(); render(); },
+  pbClean() {
+    const live = allSchedNames();
+    const list = S.pb.items.filter(it => it.name && !live.has(normName(it.name)));
+    if (!list.length) return;
+    confirmBox("로드맵에 없는 줄 정리", `로드맵의 수업일정표 항목에 없는 ${list.length}개 줄을 지울까요?\n(${list.slice(0, 6).map(x => x.name).join(", ")}${list.length > 6 ? " 등" : ""})\n따즈아처럼 로드맵 밖 과목도 지워지니 확인해 주세요. 이미 만든 견적서는 그대로예요.`, "지우기", () => {
+      S.pb.items = S.pb.items.filter(it => !list.includes(it)); savePb(); render(); toast(`${list.length}개 줄을 지웠어요`);
+    });
+  },
   pbSeed() {
     const have = new Set(S.pb.items.map(x => normName(x.name)));
     let n = 0;
