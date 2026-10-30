@@ -397,6 +397,10 @@ body.pm .qt .inp-print.num.pct{min-width:2.5em}
 .q-empty{text-align:center;color:#9a9cb4;padding:22px!important}
 .q-addrow{margin-top:8px}
 .q-sum{display:grid;grid-template-columns:1fr 1fr 1fr 1.6fr;gap:10px;margin:20px 0 6px}
+.q-sum.has-on{grid-template-columns:1.1fr .8fr 1fr 1fr 1.6fr}
+.q-card.plus > b{color:var(--qn)}
+.q-note{font-weight:500;color:#9CA3AF;font-size:11px;margin-left:6px}
+.q-online th{background:#EEF3FF}
 .q-card{border-radius:14px;padding:12px 14px;background:var(--ql);display:flex;flex-direction:column;justify-content:center;gap:2px}
 .q-card > span{font-size:11px;font-weight:700;color:#6B7280}
 .q-card > span em{font-style:normal;color:var(--qn);margin-left:4px}
@@ -1900,7 +1904,7 @@ function pbHTML() {
     <div class="sp-head"><div class="ribbon"></div><div class="crumb">견적서</div><h2>📒 과목 가격표</h2>
       <p class="nt">견적서를 만들 때 과목명이 같은 줄을 찾아 <b>내용요약·수강료</b>를 자동으로 넣어요. 띄어쓰기는 달라도 괜찮아요.${ed ? "" : " (수정은 관리자만 할 수 있어요)"}</p></div>
     <div class="sp-body">
-      ${ed ? `<div class="pb-tools no-print"><span class="help">⠿ 손잡이를 끌어서 순서를 바꿀 수 있어요.</span><span class="spacer"></span><button class="btn" data-act="pbAdd">+ 과목 줄 추가</button><button class="btn" data-act="pbSeed">🗂 로드맵 과목명 한 번에 넣기</button>${orphans ? `<button class="btn danger" data-act="pbClean">로드맵에 없는 줄 ${orphans}개 정리</button>` : ""}</div>` : ""}
+      ${ed ? `<div class="pb-tools no-print"><span class="help">⠿ 손잡이를 끌어서 순서를 바꿀 수 있어요.</span><span class="spacer"></span><button class="btn" data-act="pbAdd">+ 과목 줄 추가</button><button class="btn" data-act="pbSeed">🗂 로드맵 과목명 한 번에 넣기</button><button class="btn" data-act="pbTzz">💻 따즈아 이용권 넣기</button>${orphans ? `<button class="btn danger" data-act="pbClean">로드맵에 없는 줄 ${orphans}개 정리</button>` : ""}</div>` : ""}
       ${L.length ? `<div class="tbl-scroll"><table class="pb-t"><thead><tr>${ed ? '<th style="width:28px"></th>' : ""}<th style="width:15%">분류</th><th style="width:18%">과목명</th><th>내용요약</th><th style="width:14%">수강료</th><th style="width:7%">온라인</th>${ed ? '<th style="width:96px"></th>' : ""}</tr></thead><tbody>${rows}</tbody></table></div>`
         : `<div class="empty"><p>아직 가격표가 비어 있어요.${ed ? " [로드맵 과목명 한 번에 넣기]로 시작해 보세요." : ""}</p></div>`}
       ${ed ? `<details class="pb-text"><summary>견적서 기본 안내문구 (새 견적서에 들어가요)</summary>
@@ -2027,13 +2031,13 @@ function qCalc(q) {
   const rowDisc = q.disc.map(d => d.unit === "pct" ? Math.round(paidOff * (Number(d.rate) || 0) / 100) : (Number(d.amount) || 0));
   const disc = Math.min(rowDisc.reduce((x, y) => x + y, 0), paidOff);
   const off = paidOff - disc;
-  return { count: rows.length, total: paidOff + paidOn, freeCount: rows.filter(r => r.free).length, disc, rowDisc, off, on: paidOn, pay: off + paidOn };
+  return { count: rows.filter(r => !r.online).length, onCount: rows.filter(r => r.online).length, total: paidOff, freeCount: rows.filter(r => r.free).length, disc, rowDisc, off, on: paidOn, pay: off + paidOn };
 }
 function qUpdateTotals() {
   const q = S.q[S.cur?.id]; if (!q) return;
   const c = qCalc(q);
   const set = (k, v) => document.querySelectorAll(`[data-qt="${k}"]`).forEach(e => { e.textContent = v; });
-  set("count", c.count); set("total", won(c.total));
+  set("count", c.count); set("onCount", c.onCount); set("total", won(c.total));
   set("freeCount", c.freeCount); set("disc", c.disc ? "- " + won(c.disc) : "0");
   set("off", won(c.off)); set("on", won(c.on)); set("pay", won(c.pay));
   c.rowDisc.forEach((v, i) => set("dc" + i, v ? "₩ " + won(v) : ""));
@@ -2049,18 +2053,22 @@ function quoteHTML() {
   const rows = q.items.filter(r => !r.hide);
   const title = q.title !== undefined ? q.title : `SBS아카데미 ${st.name || "OOO"}님 과정`;
   let prevCat = null;
-  const itemRows = rows.map((r, n) => {
+  const rowHTML = (r, n) => {
     const i = q.items.indexOf(r);
     const rep = r.cat === prevCat; prevCat = r.cat;
     const noPrice = r.price === null || r.price === undefined || r.price === "";
     return `<tr class="${r.free ? "free" : ""}${rep ? " rep" : " gstart"}">
       <td class="cat"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.cat" aria-label="분류">${esc(r.cat || "")}</textarea></td>
       <td class="no">${n + 1}</td>
-      <td class="nm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.name" aria-label="과목명">${esc(r.name || "")}</textarea>${r.online ? '<span class="tag on">온라인</span>' : ""}</td>
+      <td class="nm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.name" aria-label="과목명">${esc(r.name || "")}</textarea></td>
       <td class="sm"><textarea class="qta" rows="1" data-k="q" data-f="it.${i}.summary" placeholder="내용요약" aria-label="내용요약">${esc(r.summary || "")}</textarea></td>
       <td class="pr">${r.free ? '<div class="prw"><span class="free-lbl">무료</span></div>' : `<div class="prw"><span class="cur">₩</span><input class="num${noPrice ? " miss" : ""}" inputmode="numeric" data-k="q" data-f="it.${i}.price" value="${esc(won(r.price))}" placeholder="가격 입력" aria-label="수강료"></div>`}</td>
-      <td class="op no-print"><button class="chip${r.free ? " on" : ""}" data-act="qFree" data-i="${i}" title="무료지원 과목으로 표시">무료</button><button class="chip${r.online ? " on" : ""}" data-act="qOnline" data-i="${i}" title="온라인 강의(따즈아 등)로 표시">온라인</button><button class="ic cp" data-act="qCopy" data-i="${i}" title="이 과목 한 번 더 (복사)" aria-label="이 과목 복사">⧉</button><button class="ic del" data-act="qDel" data-i="${i}" aria-label="이 줄 빼기">✕</button></td></tr>`;
-  }).join("");
+      <td class="op no-print"><button class="chip${r.free ? " on" : ""}" data-act="qFree" data-i="${i}" title="무료지원 과목으로 표시">무료</button><button class="chip${r.online ? " on" : ""}" data-act="qOnline" data-i="${i}" title="인터넷강의(따즈아)로 옮기기 / 되돌리기">인강</button><button class="ic cp" data-act="qCopy" data-i="${i}" title="이 과목 한 번 더 (복사)" aria-label="이 과목 복사">⧉</button><button class="ic del" data-act="qDel" data-i="${i}" aria-label="이 줄 빼기">✕</button></td></tr>`;
+  };
+  const offRows = rows.filter(r => !r.online), onRows = rows.filter(r => r.online);
+  const itemRows = offRows.map(rowHTML).join("");
+  prevCat = null;
+  const onItemRows = onRows.map(rowHTML).join("");
   const hidden = q.items.filter(r => r.hide).length;
   const discRows = q.disc.map((d, i) => `<tr>
       <td><input data-k="q" data-f="dc.${i}.type" value="${esc(d.type || "")}" placeholder="예: 제휴대학" aria-label="지원/할인"></td>
@@ -2075,6 +2083,7 @@ function quoteHTML() {
       <b class="q-panel-t">💰 견적서</b>
       <span class="spacer"></span>
       <button class="btn sm" data-act="qAdd">+ 과목 줄 추가</button>
+      <button class="btn sm" data-act="qAddOnline">+ 인터넷강의(따즈아)</button>
       ${hidden ? `<button class="btn sm" data-act="qUnhide">뺀 과목 ${hidden}개 다시 넣기</button>` : ""}
       <button class="btn sm" data-act="openPrice">📒 과목 가격표</button>
       <button class="btn sm pri" data-act="qDone">✓ 작성 완료</button>
@@ -2095,8 +2104,14 @@ function quoteHTML() {
       <table class="q-t q-items"><colgroup><col style="width:13%"><col style="width:4%"><col style="width:14%"><col><col style="width:13%"><col class="no-print" style="width:152px"></colgroup>
         <thead><tr><th>분류</th><th>No.</th><th>과목명</th><th>내용요약</th><th class="r">수강료</th><th class="no-print"></th></tr></thead>
         <tbody>${itemRows || `<tr><td colspan="6" class="q-empty">수강 과목을 체크하면 여기에 자동으로 들어가요.</td></tr>`}</tbody>
-        <tbody class="q-tot"><tr><td colspan="4">총 수강료</td><td class="pr"><b>₩ <span data-qt="total">${won(c.total)}</span></b></td><td class="no-print"></td></tr></tbody>
+        <tbody class="q-tot"><tr><td colspan="4">오프라인 총 수강료</td><td class="pr"><b>₩ <span data-qt="total">${won(c.total)}</span></b></td><td class="no-print"></td></tr></tbody>
       </table>
+      ${onRows.length ? `<h3 class="q-h">인터넷강의 <span class="pill"><b data-qt="onCount">${c.onCount}</b>건</span></h3>
+      <table class="q-t q-items q-online"><colgroup><col style="width:13%"><col style="width:4%"><col style="width:14%"><col><col style="width:13%"><col class="no-print" style="width:152px"></colgroup>
+        <thead><tr><th>분류</th><th>No.</th><th>과목명</th><th>내용요약</th><th class="r">수강료</th><th class="no-print"></th></tr></thead>
+        <tbody>${onItemRows}</tbody>
+        <tbody class="q-tot"><tr><td colspan="4">인터넷강의 합계</td><td class="pr"><b>₩ <span data-qt="on">${won(c.on)}</span></b></td><td class="no-print"></td></tr></tbody>
+      </table>` : ""}
 
       <h3 class="q-h">무료지원 및 할인내역</h3>
       <table class="q-t q-disc"><colgroup><col style="width:22%"><col style="width:22%"><col style="width:22%"><col><col class="no-print" style="width:96px"></colgroup>
@@ -2104,12 +2119,13 @@ function quoteHTML() {
         <tbody>${discRows}</tbody></table>
       <div class="no-print q-addrow"><button class="btn sm" data-act="qDiscAdd">+ 할인 줄 추가</button></div>
 
-      <div class="q-sum">
-        <div class="q-card"><span>총 수강료</span><b>₩ <i data-qt="total">${won(c.total)}</i></b></div>
+      <div class="q-sum${onRows.length ? " has-on" : ""}">
+        <div class="q-card"><span>오프라인 총 수강료</span><b>₩ <i data-qt="total">${won(c.total)}</i></b></div>
         <div class="q-card minus"><span>무료지원</span><b><i data-qt="freeCount">${c.freeCount}</i>과목</b></div>
         <div class="q-card minus"><span>할인</span><b>₩ <i data-qt="disc">${c.disc ? "- " + won(c.disc) : "0"}</i></b></div>
+        ${onRows.length ? `<div class="q-card plus"><span>인터넷강의</span><b>₩ <i data-qt="on">${won(c.on)}</i></b></div>` : ""}
         <div class="q-card pay"><span>납부할 수강료</span><b>₩ <i data-qt="pay">${won(c.pay)}</i></b>
-          <small>오프라인 ₩ <i data-qt="off">${won(c.off)}</i> · 온라인 ₩ <i data-qt="on">${won(c.on)}</i></small></div>
+          <small>오프라인 ₩ <i data-qt="off">${won(c.off)}</i>${onRows.length ? ` + 인터넷강의 ₩ <i data-qt="on">${won(c.on)}</i>` : ""}</small></div>
       </div>
 
       <div class="q-notes">
@@ -2413,7 +2429,7 @@ function back() {
 /* ================= 클릭 동작 ================= */
 const ADMIN_ACTS = new Set(["addSubj", "addCourse", "cMove", "cDel", "loadRoadmap", "resetRoadmap", "loadSchedule", "resetSchedule",
   "addMonth", "delMonth", "addRow", "delRow", "addGroup", "delGroup",
-  "pbAdd", "pbDel", "pbMove", "pbSeed", "pbOnline", "pbClean",
+  "pbAdd", "pbDel", "pbMove", "pbSeed", "pbOnline", "pbClean", "pbTzz",
   "subjEdit", "dayAdd", "dayAddMany", "dayMove", "dayDel", "imgMove", "imgDel"]);
 const ACT = {
   home() { S.stack = []; S.page = { name: "home" }; S.subjEdit = false; render(); window.scrollTo(0, 0); },
@@ -2479,14 +2495,16 @@ const ACT = {
     toast(`‘${r.name}’ ${n}개가 됐어요`);
   },
   qUnhide() { const q = S.q[S.cur?.id]; if (!q) return; q.items.forEach(r => { r.hide = false; }); saveQuote(q); render(); },
-  qAdd() {
+  qAddOnline() { ACT.qAdd(null, null, true); },
+  qAdd(el, e, onlineOnly) {
     const q = S.q[S.cur?.id]; if (!q) return;
-    const list = S.pb?.items || [];
+    const list = (S.pb?.items || []).filter(it => !onlineOnly || it.online);
     const box = modal({
-      title: "견적서에 과목 추가",
+      title: onlineOnly ? "인터넷강의(따즈아) 추가" : "견적서에 과목 추가",
       body: `<p class="help">가격표에서 고르면 내용요약·수강료가 함께 들어가요. 로드맵에 없는 과목(따즈아 등)도 여기서 넣으면 됩니다.</p>
+        ${onlineOnly && !list.length ? `<p class="help">가격표에 인터넷강의가 없어요. 관리자가 [📒 과목 가격표]에서 [따즈아 이용권 넣기]를 누르면 바로 쓸 수 있어요.</p>` : ""}
         ${list.length ? `<input type="text" id="f-qs" placeholder="과목명 검색"><div class="tpl-list" id="qPick">${list.map((it, i) => `<div class="tpl-row" data-name="${esc(normName(it.name + it.cat))}"><div><b>${esc(it.name)}</b><small>${esc(it.cat || "")}${it.price != null ? " · ₩ " + won(it.price) : ""}</small></div><button class="btn sm pri" data-pi="${i}">추가</button></div>`).join("")}</div>` : `<p class="help">가격표가 비어 있어요. [📒 과목 가격표]에서 먼저 등록하면 편해요.</p>`}`,
-      actions: [{ label: "닫기" }, { label: "빈 줄 추가", fn: () => { q.items.push({ id: uid("q"), src: "", cat: "", name: "", summary: "", price: null, free: false, online: false, hide: false }); saveQuote(q); render(); } }]
+      actions: [{ label: "닫기" }, { label: "빈 줄 추가", fn: () => { q.items.push({ id: uid("q"), src: "", cat: onlineOnly ? "따즈아" : "", name: "", summary: "", price: null, free: false, online: !!onlineOnly, hide: false }); saveQuote(q); render(); } }]
     });
     box.querySelectorAll("[data-pi]").forEach(b => b.addEventListener("click", () => {
       const it = list[+b.dataset.pi];
@@ -2514,6 +2532,22 @@ const ACT = {
     confirmBox("로드맵에 없는 줄 정리", `로드맵의 수업일정표 항목에 없는 ${list.length}개 줄을 지울까요?\n(${list.slice(0, 6).map(x => x.name).join(", ")}${list.length > 6 ? " 등" : ""})\n따즈아처럼 로드맵 밖 과목도 지워지니 확인해 주세요. 이미 만든 견적서는 그대로예요.`, "지우기", () => {
       S.pb.items = S.pb.items.filter(it => !list.includes(it)); savePb(); render(); toast(`${list.length}개 줄을 지웠어요`);
     });
+  },
+  pbTzz() {
+    const T = [
+      ["따즈아 30일", "프리패스 30일 이용권 (따즈아 내 디자인 과정 무제한 이용권) 이벤트 ※190,000 -> 0원", 190000],
+      ["따즈아 1년", "프리패스 1년 이용권 (따즈아 내 모든 교육 과정 무제한 이용권) 수강생 ※700,000 -> 320,000원", 320000],
+      ["따즈아 2년", "프리패스 2년 이용권 (따즈아 내 모든 교육 과정 무제한 이용권) 수강생 ※980,000원 -> 390,000원", 390000],
+      ["따즈아 3년", "프리패스 3년 이용권 (따즈아 내 모든 교육 과정 무제한 이용권) 수강생 ※1,260,000원 -> 500,000원", 500000],
+      ["따즈아 평생", "프리패스 평생 이용권 (따즈아 내 모든 교육 과정 무제한 이용권) 수강생 ※3,500,000원 -> 990,000원", 990000]
+    ];
+    let n = 0;
+    T.forEach(([name, summary, price]) => {
+      const ex = S.pb.items.find(x => normName(x.name) === normName(name));
+      if (ex) { ex.online = true; return; }
+      S.pb.items.push({ id: uid("p"), cat: "따즈아", name, summary, price, online: true }); n++;
+    });
+    savePb(); render(); toast(n ? `따즈아 이용권 ${n}개를 넣었어요` : "이미 모두 들어 있어요");
   },
   pbSeed() {
     const have = new Set(S.pb.items.map(x => normName(x.name)));
