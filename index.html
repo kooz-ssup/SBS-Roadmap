@@ -2024,14 +2024,16 @@ function syncQuote(q) {
   return changed;
 }
 function qCalc(q) {
-  /* 무료 과목은 금액에 넣지 않음. 할인은 ₩ 금액 또는 %(오프라인 수강료 기준) */
+  /* 납부액 = (무료 과목을 뺀 오프라인 수강료 − 할인) + 인터넷강의. % 할인은 무료 과목을 뺀 오프라인 수강료 기준 */
   const rows = q.items.filter(r => !r.hide);
   const sum = f => rows.filter(f).reduce((a, r) => a + (Number(r.price) || 0), 0);
   const paidOff = sum(r => !r.free && !r.online), paidOn = sum(r => !r.free && r.online);
   const rowDisc = q.disc.map(d => d.unit === "pct" ? Math.round(paidOff * (Number(d.rate) || 0) / 100) : (Number(d.amount) || 0));
   const disc = Math.min(rowDisc.reduce((x, y) => x + y, 0), paidOff);
   const off = paidOff - disc;
-  return { count: rows.filter(r => !r.online).length, onCount: rows.filter(r => r.online).length, total: paidOff, freeCount: rows.filter(r => r.free).length, disc, rowDisc, off, on: paidOn, pay: off + paidOn };
+  /* 오프라인 총 수강료는 무료 과목까지 포함한 정가 합계 (무료 금액은 따로 표시하지 않음) */
+  const listOff = sum(r => !r.online);
+  return { count: rows.filter(r => !r.online).length, onCount: rows.filter(r => r.online).length, total: listOff, freeCount: rows.filter(r => r.free).length, disc, rowDisc, off, on: paidOn, pay: off + paidOn };
 }
 function qUpdateTotals() {
   const q = S.q[S.cur?.id]; if (!q) return;
