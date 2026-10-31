@@ -265,10 +265,13 @@ body.lb-on{overflow:hidden}
 .pf-item.wide{grid-column:span 2}
 .pf-video{position:relative;padding-top:56.25%;background:#000}
 .pf-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.pf-item.link a{display:flex;gap:12px;align-items:center;padding:16px;text-decoration:none;color:var(--ink)}
-.pf-item.link a:hover{background:var(--field)}
-.pf-link-ic{font-size:26px}
-.pf-item.link b{display:block}
+.pf-link-thumb{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;width:100%;text-decoration:none;text-align:center;padding:16px;color:#fff;
+  background:radial-gradient(120% 120% at 100% 0%,rgba(47,111,235,.55),transparent 60%),linear-gradient(135deg,#1F2430,#2B3245)}
+.pf-link-thumb:hover{filter:brightness(1.08)}
+.pf-link-ic{font-size:34px;line-height:1}
+.pf-link-t{font-size:17px;font-weight:800;word-break:keep-all}
+.pf-link-host{font-size:12px;opacity:.75}
+.pf-link-go{margin-top:6px;font-size:12px;font-weight:700;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:999px;padding:4px 12px}
 .pf-item small,.pf-url{display:block;color:var(--muted);font-size:12px;word-break:break-all}
 .pf-url{padding:0 12px 10px;text-decoration:none}
 .pf-cap{margin:8px 12px;font-size:13px;color:var(--ink)}
@@ -1552,6 +1555,9 @@ function pfHTML() {
   const legacy = pfCanEdit() ? legacyPf(s.id) : [];
   const legacyBar = legacy.length ? `<div class="pf-legacy no-print"><p>📦 예전에 <b>수강생 화면</b>에서 올렸던 포폴 <b>${legacy.length}개</b>가 있어요${legacy[0].from ? ` (${esc([...new Set(legacy.map(x => x.from).filter(Boolean))].join(", "))} 수강생)` : ""}. 공통 포폴로 옮겨 올까요?</p><button class="btn sm pri" data-act="pfImport">가져오기</button></div>` : "";
   L.forEach(it => { if (it.type === "image" && it.img) loadPfImg(it.img); });
+  /* 링크 카드도 이미지 썸네일과 같은 비율로 (첫 이미지 비율, 없으면 16:9) */
+  const firstImg = L.find(x => x.type === "image" && x.w && x.h);
+  const thumbRatio = firstImg ? `${firstImg.w} / ${firstImg.h}` : "16 / 9";
   const items = L.map((it, i) => {
     const op = ed ? `<div class="pf-op no-print"><button class="btn sm" data-act="pfMove" data-i="${i}" data-d="-1" aria-label="앞으로">◀</button><button class="btn sm" data-act="pfMove" data-i="${i}" data-d="1" aria-label="뒤로">▶</button><button class="btn sm danger" data-act="pfDel" data-i="${i}">삭제</button></div>` : "";
     const cap = ed
@@ -1562,7 +1568,13 @@ function pfHTML() {
     }
     const em = embedURL(it.url);
     if (em) return `<figure class="pf-item wide"><div class="pf-video"><iframe src="${esc(em)}" title="${esc(it.title || "영상")}" allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe></div>${cap}<a class="pf-url" href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.url)}</a>${op}</figure>`;
-    return `<figure class="pf-item link"><a href="${esc(it.url)}" target="_blank" rel="noopener"><span class="pf-link-ic" aria-hidden="true">🔗</span><span><b>${esc(it.title || "링크 열기")}</b><small>${esc(it.url)}</small></span></a>${ed ? `<input class="pf-cap" data-k="pfcap" data-i="${i}" data-f="title" value="${esc(it.title || "")}" placeholder="제목 (선택)" aria-label="제목">` : ""}${op}</figure>`;
+    let host = ""; try { host = new URL(it.url).hostname.replace(/^www\./, ""); } catch (e) {}
+    return `<figure class="pf-item link"><a class="pf-link-thumb" href="${esc(it.url)}" target="_blank" rel="noopener" style="aspect-ratio:${thumbRatio}">
+        <span class="pf-link-ic" aria-hidden="true">🔗</span>
+        <b class="pf-link-t">${esc(it.title || "링크 열기")}</b>
+        <span class="pf-link-host">${esc(host || it.url)}</span>
+        <span class="pf-link-go">열어보기 ↗</span></a>
+      ${ed ? `<input class="pf-cap" data-k="pfcap" data-i="${i}" data-f="title" value="${esc(it.title || "")}" placeholder="제목 (선택)" aria-label="제목"><a class="pf-url" href="${esc(it.url)}" target="_blank" rel="noopener">${esc(it.url)}</a>` : ""}${op}</figure>`;
   }).join("");
   const tools = ed ? `<div class="drop no-print" id="dropZone">
       <p><b>포폴 올리기</b></p>
