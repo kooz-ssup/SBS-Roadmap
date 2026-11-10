@@ -1133,15 +1133,15 @@ function scheduleHTML() {
   const cols = C.months.length + 2 + (edit ? 1 : 0);
   let rows = "";
   C.groups.forEach(g => {
-    const vrows = visibleRows(g);
+    const vrows = displayRows(g);
     vrows.forEach((r, ri) => {
       rows += `<tr class="${ri === 0 ? "gstart" : ""}">`;
       if (ri === 0) rows += `<th class="grp" rowspan="${vrows.length}"><input data-k="grp" data-id="${esc(g.id)}" value="${esc(g.label)}" aria-label="구분 이름"></th>`;
-      rows += `<th class="time"><div class="cellx"><input data-k="rowlabel" data-g="${esc(g.id)}" data-id="${esc(r.id)}" value="${esc(rowLabel(r))}" aria-label="시간" title="시간을 바꿀 수 있어요. 예: 19 입력 → 19:00~22:00으로 자동 합치기">${edit ? `<button class="x" data-act="delRow" data-g="${esc(g.id)}" data-id="${esc(r.id)}" title="이 시간 삭제" aria-label="이 시간 삭제">×</button>` : ""}</div></th>`;
+      rows += `<th class="time"><div class="cellx"><input data-k="rowlabel" data-g="${esc(g.id)}" data-id="${esc(r.id)}" value="${esc(r.label)}" aria-label="시간" title="시간을 바꿀 수 있어요. 예: 19 입력 → 19:00~22:00으로 자동 합치기">${edit ? `<button class="x" data-act="delRow" data-g="${esc(g.id)}" data-id="${esc(r.id)}" title="이 시간 삭제" aria-label="이 시간 삭제">×</button>` : ""}</div></th>`;
       C.months.forEach(m => {
         const key = r.id + "_" + m.id;
         const v = st?.cells?.[key] || "";
-        rows += `<td class="${v ? "on" : ""}"><textarea class="cellta" rows="1" data-k="cell" data-key="${esc(key)}" aria-label="${esc(g.label + " " + rowLabel(r) + " " + monthLabel(m))}">${esc(v)}</textarea></td>`;
+        rows += `<td class="${v ? "on" : ""}"><textarea class="cellta" rows="1" data-k="cell" data-key="${esc(key)}" aria-label="${esc(g.label + " " + r.label + " " + monthLabel(m))}">${esc(v)}</textarea></td>`;
       });
       if (edit) rows += `<td class="no-print"></td>`;
       rows += `</tr>`;
@@ -1172,7 +1172,7 @@ function scheduleHTML() {
   const emptyBlk = !view.list.length
     ? `<p class="tpl-note no-print" style="border:0">${tplMode() ? "[+ 학사일정 추가]로 월별 개강·종강일을 넣어 주세요." : "이 기간의 학사일정이 아직 없어요. 관리자가 [편집] 모드에서 월별 개강일을 넣으면 자동으로 채워져요."}</p>` : "";
 
-  const own = st && (st.months || (st.blkOv && Object.keys(st.blkOv).length) || st.year0 || typeof st.acadTitle === "string" || (st.rowLabels && Object.keys(st.rowLabels).length) || (st.rowHide && Object.keys(st.rowHide).length));
+  const own = st && (st.months || (st.blkOv && Object.keys(st.blkOv).length) || st.year0 || typeof st.acadTitle === "string" || (st.timeMerge && Object.keys(st.timeMerge).length));
   const scNote = tplMode()
     ? `<p class="tpl-note no-print">지금은 <b>기본 일정표와 월별 학사일정</b>을 고치는 중이에요. 여기 넣은 월별 개강·종강일이 각 수강생의 시간표 월에 맞춰 자동으로 들어가요.</p>`
     : (canEdit() && !st ? `<p class="tpl-note no-print">수강생을 고르거나 새로 만들면 그 수강생의 월·개강/종강 일정을 고칠 수 있어요.</p>` : "");
@@ -1239,9 +1239,8 @@ function blockView() {
 }
 function acadNow() { return (!tplMode() && typeof S.cur?.acadTitle === "string") ? S.cur.acadTitle : S.schedule.acadTitle; }
 function stuMonths(st) { if (!st.months) st.months = Object.fromEntries(S.schedule.months.map(m => [m.id, m.label])); return st.months; }
-/* ---------- 수강생별 시간 (예: 19 입력 → 19:00~22:00, 겹치는 18~20·20~22시 칸 합치기) ---------- */
-function rowLabel(r) { const o = !tplMode() && S.cur?.rowLabels; return (o && o[r.id] !== undefined && o[r.id] !== "") ? o[r.id] : r.label; }
-function visibleRows(g) { const h = !tplMode() && S.cur?.rowHide; return h ? g.rows.filter(r => !h[r.id]) : g.rows; }
+/* ---------- 수강생별 시간: 구분(평일/주말)마다 ‘합친 시간’ 하나를 저장 ----------
+   기본: 18:00~20:00, 20:00~22:00 → 19 입력: 19:00~22:00 한 칸 → 18 입력: 원래 두 칸 */
 const fmtHM = m => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
 function parseRange(v) {
   const m = /^\s*(\d{1,2})(?:\s*[:시]\s*(\d{2})?)?\s*(?:분)?\s*(?:[~\-–]\s*(\d{1,2})(?:\s*[:시]\s*(\d{2})?)?\s*(?:분)?)?\s*$/.exec(v || "");
@@ -1251,48 +1250,45 @@ function parseRange(v) {
   if (s >= 24 * 60 || (e !== null && (e > 24 * 60 || e <= s))) return null;
   return { s, e };
 }
-function applyTimeMerge(gid, rid, value) {
+function timeSpec(g) { const t = !tplMode() && S.cur?.timeMerge; return t && t[g.id] && typeof t[g.id].s === "number" ? t[g.id] : null; }
+/* 화면에 보일 시간 줄 (합친 칸은 첫 번째 겹치는 줄 자리에 한 줄로) */
+function displayRows(g) {
+  const sp = timeSpec(g);
+  if (!sp) return g.rows.map(r => ({ id: r.id, label: r.label }));
+  const ov = g.rows.filter(r => { const x = parseRange(r.label); return x && x.e !== null && x.s < sp.e && x.e > sp.s; });
+  if (!ov.length) return g.rows.map(r => ({ id: r.id, label: r.label }));
+  const keep = ov[0].id, gone = new Set(ov.slice(1).map(r => r.id));
+  return g.rows.filter(r => !gone.has(r.id)).map(r => ({ id: r.id, label: r.id === keep ? fmtHM(sp.s) + "~" + fmtHM(sp.e) : r.label }));
+}
+function applyTimeMerge(gid, value) {
   const st = S.cur; if (!st || !stuScope()) return;
   const g = S.schedule.groups.find(x => x.id === gid); if (!g) return;
-  st.rowLabels = st.rowLabels || {}; st.rowHide = st.rowHide || {};
-  const part = { rowLabels: {}, rowHide: {}, cells: {} };
-  /* 이 칸이 전에 합쳤던 칸은 먼저 다시 보이게 */
-  const wasHidden = Object.keys(st.rowHide).filter(h => st.rowHide[h] === rid);
-  wasHidden.forEach(h => { delete st.rowHide[h]; part.rowHide[h] = DEL; });
   const p = parseRange(value);
-  /* 원래 시작 시간을 다시 입력하면 원래대로 (예: 18 → 18:00~20:00, 20:00~22:00 칸도 다시 나타남) */
-  const baseRow = g.rows.find(r => r.id === rid), base = parseRange(baseRow?.label);
-  const origStarts = [baseRow, ...wasHidden.map(h => g.rows.find(r => r.id === h))].map(r => parseRange(r?.label)?.s).filter(v => v !== undefined);
-  if (p && base && ((p.s === base.s && (p.e === null || p.e === base.e)) || (p.e === null && wasHidden.length && origStarts.includes(p.s)))) {
-    delete st.rowLabels[rid]; part.rowLabels[rid] = DEL;
-    patchStudent(part); render();
-    return;
+  if (!p) { toast("시간은 19 또는 19:00~22:00처럼 적어 주세요"); render(); return; }
+  const base = g.rows.map(r => parseRange(r.label)).filter(x => x && x.e !== null);
+  st.timeMerge = st.timeMerge || {};
+  /* 원래 있는 시작 시간(예: 18)이나 원래 시간 그대로를 적으면 → 합친 칸을 풀어 기본 시간으로 */
+  const isBase = base.some(x => x.s === p.s && (p.e === null || p.e === x.e));
+  if (isBase) {
+    delete st.timeMerge[gid];
+    patchStudent({ timeMerge: { [gid]: DEL } }); render(); return;
   }
-  if (p) {
-    let { s, e } = p;
-    const ranges = g.rows.filter(r => r.id !== rid && !st.rowHide[r.id]).map(r => ({ r, x: parseRange(rowLabel(r)) })).filter(o => o.x && o.x.e !== null);
-    if (e === null) {
-      /* 끝 시간을 안 적으면: 원래 있던 시작 시간이면 그 칸의 끝, 아니면 3시간 수업 (예: 19 → 19:00~22:00) */
-      const same = ranges.find(o => o.x.s === s);
-      e = same ? same.x.e : Math.min(s + 180, 24 * 60);
-    }
-    const label = fmtHM(s) + "~" + fmtHM(e);
-    st.rowLabels[rid] = label; part.rowLabels[rid] = label;
-    /* 겹치는 시간 칸은 숨기고, 적어 둔 과목은 이 칸으로 옮김 */
-    ranges.filter(o => o.x.s < e && o.x.e > s).forEach(o => {
-      st.rowHide[o.r.id] = rid; part.rowHide[o.r.id] = rid;
-      st.cells = st.cells || {};
-      S.schedule.months.forEach(m => {
-        const from = o.r.id + "_" + m.id, to = rid + "_" + m.id;
-        if (st.cells[from]) {
-          if (!st.cells[to]) { st.cells[to] = st.cells[from]; part.cells[to] = st.cells[from]; }
-          delete st.cells[from]; part.cells[from] = DEL;
-        }
-      });
-    });
+  const s = p.s, e = p.e !== null ? p.e : Math.min(s + 180, 24 * 60);
+  st.timeMerge[gid] = { s, e };
+  /* 합쳐지는 칸에 적어 둔 과목은 남는 칸으로 옮김 */
+  const ov = g.rows.filter(r => { const x = parseRange(r.label); return x && x.e !== null && x.s < e && x.e > s; });
+  const part = { timeMerge: { [gid]: { s, e } } };
+  if (ov.length > 1) {
+    st.cells = st.cells || {}; part.cells = {};
+    ov.slice(1).forEach(r => S.schedule.months.forEach(m => {
+      const from = r.id + "_" + m.id, to = ov[0].id + "_" + m.id;
+      if (st.cells[from]) {
+        if (!st.cells[to]) { st.cells[to] = st.cells[from]; part.cells[to] = st.cells[from]; }
+        delete st.cells[from]; part.cells[from] = DEL;
+      }
+    }));
   }
-  patchStudent(part);
-  render();
+  patchStudent(part); render();
 }
 function monthNum(v) {
   const m = /^\s*(\d{1,2})\s*(월)?\s*$/.exec(v || "");
@@ -2773,8 +2769,8 @@ const ACT = {
   resetStuSchedule() {
     const st = S.cur; if (!st || !stuScope()) return;
     confirmBox("기본 일정으로 되돌리기", `${st.name || "이 수강생"} 님의 월·시간·개강/종강 일정을 기본 일정표로 되돌릴까요?\n시간표 칸에 적은 내용은 그대로 남아요.`, "되돌리기", () => {
-      delete st.months; delete st.blocks; delete st.acadTitle; delete st.blkOv; delete st.year0; delete st.rowLabels; delete st.rowHide;
-      patchStudent({ months: DEL, blocks: DEL, acadTitle: DEL, blkOv: DEL, year0: DEL, rowLabels: DEL, rowHide: DEL }); render();
+      delete st.months; delete st.blocks; delete st.acadTitle; delete st.blkOv; delete st.year0; delete st.rowLabels; delete st.rowHide; delete st.timeMerge;
+      patchStudent({ months: DEL, blocks: DEL, acadTitle: DEL, blkOv: DEL, year0: DEL, rowLabels: DEL, rowHide: DEL, timeMerge: DEL }); render();
     });
   },
   newStudent() { studentForm(null); },
@@ -2862,7 +2858,7 @@ document.addEventListener("keydown", e => {
   if ((e.key === "Enter" || e.key === " ") && e.target.matches('.clabel[role="button"]')) { e.preventDefault(); ACT.course(e.target); }
 });
 document.addEventListener("change", e => {
-  if (e.target.dataset?.k === "rowlabel" && !tplMode() && stuScope()) { applyTimeMerge(e.target.dataset.g, e.target.dataset.id, e.target.value); return; }
+  if (e.target.dataset?.k === "rowlabel" && !tplMode() && stuScope()) { applyTimeMerge(e.target.dataset.g, e.target.value); return; }
   if (e.target.dataset?.k === "month" && (tplMode() || stuScope())) {
     /* 월 입력 정리: 숫자만 넣어도 ‘9월’로, 뒤 칸은 10월·11월…로 자동 채움 */
     const L = S.schedule.months, i = L.findIndex(x => x.id === e.target.dataset.id);
@@ -2938,9 +2934,7 @@ const IN = {
     const g = S.schedule.groups.find(x => x.id === el.dataset.g), r = g?.rows.find(x => x.id === el.dataset.id);
     if (!r) return;
     if (tplMode()) { r.label = el.value; saveSchedule(); return; }
-    if (!stuScope()) return;
-    const st = S.cur; st.rowLabels = st.rowLabels || {};
-    st.rowLabels[r.id] = el.value; patchStudent({ rowLabels: { [r.id]: el.value } });
+    /* 수강생 시간은 입력을 마치면(Enter·다른 칸 클릭) 한 번에 적용 */
   },
   blk(el) {
     const f = el.dataset.f, id = el.dataset.id;
