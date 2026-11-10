@@ -480,6 +480,8 @@ body.pm .qt .q-items tr.free .inp-print.num{text-decoration:line-through;color:#
 body.pm .qt .exta-print{font-size:11.5px;color:#4B5563;line-height:1.55;padding:3px 5px}
 body.pm .qt .exta-print.warn{color:#DC2626;font-weight:700}
 body.pm .q-items .exta-print{font-size:12.5px;color:#4B5563;line-height:1.5}
+.tpl-note.warn{background:#FFF7E6;color:#92400E;border-bottom-color:#F6D79A}
+.tpl-note.warn .btn{margin-left:6px}
 .tpl-note{margin:0;padding:10px 16px;background:var(--field);border-bottom:1px solid var(--line);font-size:13px;color:var(--muted);text-align:center}
 .shared{margin:8px 0 0;font-size:13px;color:var(--muted)}
 .simgs{display:grid;gap:16px}
@@ -740,7 +742,7 @@ const FIREBASE_CONFIG = {
   appId: "1:106910380951:web:1c01a80781179f90668ad2"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026-11-10 · 시간합치기 v3";
+const APP_VERSION = "2026-11-10 · 시간합치기 v4";
 
 /* ================= 저장소 (Firebase, 설정 전에는 이 브라우저) ================= */
 const DEL = Object.freeze({ __del: true });
@@ -1175,9 +1177,11 @@ function scheduleHTML() {
     ? `<p class="tpl-note no-print" style="border:0">${tplMode() ? "[+ 학사일정 추가]로 월별 개강·종강일을 넣어 주세요." : "이 기간의 학사일정이 아직 없어요. 관리자가 [편집] 모드에서 월별 개강일을 넣으면 자동으로 채워져요."}</p>` : "";
 
   const own = st && (st.months || (st.blkOv && Object.keys(st.blkOv).length) || st.year0 || typeof st.acadTitle === "string" || (st.timeMerge && Object.keys(st.timeMerge).length));
-  const scNote = tplMode()
+  let scNote = tplMode()
     ? `<p class="tpl-note no-print">지금은 <b>기본 일정표와 월별 학사일정</b>을 고치는 중이에요. 여기 넣은 월별 개강·종강일이 각 수강생의 시간표 월에 맞춰 자동으로 들어가요.</p>`
     : (canEdit() && !st ? `<p class="tpl-note no-print">수강생을 고르거나 새로 만들면 그 수강생의 월·개강/종강 일정을 고칠 수 있어요.</p>` : "");
+  const ovl = baseOverlaps();
+  if (ovl.length && canEdit()) scNote += `<p class="tpl-note warn no-print">⚠ 기본 시간표에서 <b>${esc(ovl.map(o => o.a + " / " + o.b).join(", "))}</b> 시간이 겹쳐 있어요. 이 때문에 19·18 입력이 이상하게 보일 수 있어요.${canAdmin() ? ` <button class="btn sm pri" data-act="fixTimes">기본 시간 바로잡기</button>` : " 관리자에게 기본 시간표 확인을 요청해 주세요."}</p>`;
   return `<section class="sheet sc">${scNote}
     <div class="sc-head">
       <div class="ttl"><input data-k="sname" value="${esc(st?.name || "")}" placeholder="OOO" aria-label="수강생 이름"><span>님 수업일정</span></div>
@@ -1253,7 +1257,35 @@ function parseRange(v) {
   if (s >= 24 * 60 || (e !== null && (e > 24 * 60 || e <= s))) return null;
   return { s, e };
 }
-function timeSpec(g) { const t = !tplMode() && S.cur?.timeMerge; return t && t[g.id] && typeof t[g.id].s === "number" ? t[g.id] : null; }
+/* 기본 시간표에서 위아래 줄 시간이 겹치는 곳 (예: 19:00~22:00 다음 20:00~22:00) */
+function baseOverlaps() {
+  const out = [];
+  (S.schedule?.groups || []).forEach(g => g.rows.forEach((r, i) => {
+    const a = parseRange(r.label), n = g.rows[i + 1], b = n && parseRange(n.label);
+    /* 시작 시간이 같은 줄(예: 주말 10:00~13:00 / 10:00~14:00)은 선택지라서 겹침으로 보지 않음 */
+    if (a && b && a.e !== null && b.e !== null && a.s !== b.s && a.s < b.e && b.s < a.e) out.push({ g, i, a: r.label, b: n.label });
+  }));
+  return out;
+}
+function fixBaseTimes() {
+  let n = 0;
+  S.schedule.groups.forEach(g => g.rows.forEach((r, i) => {
+    const cur = parseRange(r.label), next = g.rows[i + 1] && parseRange(g.rows[i + 1].label);
+    if (!cur || !next || cur.e === null || next.e === null || cur.s === next.s || !(cur.s < next.e && next.s < cur.e)) return;
+    const prev = i > 0 && parseRange(g.rows[i - 1].label);
+    const s = prev && prev.e !== null ? prev.e : cur.s, e = next.s;
+    if (s < e) { r.label = fmtHM(s) + "~" + fmtHM(e); n++; }
+  }));
+  saveSchedule(); render();
+  toast(n ? `겹치던 시간 ${n}곳을 바로잡았어요` : "바로잡을 곳을 찾지 못했어요. [편집]에서 시간을 직접 고쳐 주세요");
+}
+function timeSpec(g) {
+  const t = !tplMode() && S.cur?.timeMerge, sp = t && t[g.id];
+  if (!sp || typeof sp.s !== "number") return null;
+  /* 시작 시간이 기본 시간표의 시작 시간과 같으면 합친 것으로 보지 않음 (예전에 꼬인 기록 무시) */
+  if (g.rows.some(r => parseRange(r.label)?.s === sp.s)) return null;
+  return sp;
+}
 /* 화면에 보일 시간 줄 (합친 칸은 첫 번째 겹치는 줄 자리에 한 줄로) */
 function displayRows(g) {
   const sp = timeSpec(g);
@@ -2498,7 +2530,7 @@ function back() {
 /* ================= 클릭 동작 ================= */
 const ADMIN_ACTS = new Set(["addSubj", "addCourse", "cMove", "cDel", "loadRoadmap", "resetRoadmap", "loadSchedule", "resetSchedule",
   "addMonth", "delMonth", "addRow", "delRow", "addGroup", "delGroup",
-  "pbAdd", "pbDel", "pbMove", "pbSeed", "pbOnline", "pbClean", "pbTzz",
+  "fixTimes", "pbAdd", "pbDel", "pbMove", "pbSeed", "pbOnline", "pbClean", "pbTzz",
   "subjEdit", "dayAdd", "dayAddMany", "dayMove", "dayDel", "imgMove", "imgDel"]);
 const ACT = {
   home() { S.stack = []; S.page = { name: "home" }; S.subjEdit = false; render(); window.scrollTo(0, 0); },
@@ -2769,6 +2801,7 @@ const ACT = {
     const v = blockView(); st.year0 = (v.y0 || new Date().getFullYear()) + (+el.dataset.d);
     patchStudent({ year0: st.year0 }); render();
   },
+  fixTimes() { if (canAdmin()) fixBaseTimes(); },
   resetStuSchedule() {
     const st = S.cur; if (!st || !stuScope()) return;
     confirmBox("기본 일정으로 되돌리기", `${st.name || "이 수강생"} 님의 월·시간·개강/종강 일정을 기본 일정표로 되돌릴까요?\n시간표 칸에 적은 내용은 그대로 남아요.`, "되돌리기", () => {
@@ -2862,6 +2895,11 @@ document.addEventListener("keydown", e => {
 });
 document.addEventListener("change", e => {
   if (e.target.dataset?.k === "rowlabel" && !tplMode() && stuScope()) { applyTimeMerge(e.target.dataset.g, e.target.value); return; }
+  if (e.target.dataset?.k === "rowlabel" && tplMode()) {
+    const p = parseRange(e.target.value), g = S.schedule.groups.find(x => x.id === e.target.dataset.g), r = g?.rows.find(x => x.id === e.target.dataset.id);
+    if (p && p.e !== null && r) { r.label = fmtHM(p.s) + "~" + fmtHM(p.e); saveSchedule(); render(); }
+    return;
+  }
   if (e.target.dataset?.k === "month" && (tplMode() || stuScope())) {
     /* 월 입력 정리: 숫자만 넣어도 ‘9월’로, 뒤 칸은 10월·11월…로 자동 채움 */
     const L = S.schedule.months, i = L.findIndex(x => x.id === e.target.dataset.id);
