@@ -742,7 +742,7 @@ const FIREBASE_CONFIG = {
   appId: "1:106910380951:web:1c01a80781179f90668ad2"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026-11-19 · 방향키 이동 v5";
+const APP_VERSION = "2026-11-19 · 방향키·과목선택 v6";
 
 /* ================= 저장소 (Firebase, 설정 전에는 이 브라우저) ================= */
 const DEL = Object.freeze({ __del: true });
@@ -1370,8 +1370,11 @@ function autosizeCells(root = document) {
   root.querySelectorAll("textarea.exta, textarea.qta").forEach(t => { if (!t.offsetParent) return; t.style.height = "auto"; t.style.height = (t.scrollHeight + t.offsetHeight - t.clientHeight) + "px"; });
 }
 /* 시간표 칸 추천 목록 팝업 (직접 입력도 가능) */
+/* 시간표 칸 추천 목록
+   - 칸 이동 모드(기본): 방향키 = 칸 이동, Enter = 목록 고르기 시작(목록이 있을 때) / 아래 칸으로
+   - 목록 선택 모드(글자 입력 중 또는 Enter로 시작): ↑↓ = 목록 이동, Enter = 넣기, Esc = 그만두기 */
 const Sugg = {
-  el: null, input: null, items: [], idx: -1,
+  el: null, input: null, items: [], idx: -1, active: false,
   ensure() {
     if (this.el) return;
     this.el = document.createElement("div"); this.el.className = "sugg no-print"; this.el.setAttribute("role", "listbox"); this.el.hidden = true;
@@ -1380,34 +1383,46 @@ const Sugg = {
   },
   open(input) {
     if (input.readOnly) return;
-    this.ensure(); this.input = input; this.update();
+    this.ensure(); this.input = input; this.active = false; this.update();
   },
+  visible() { return !!(this.el && !this.el.hidden && this.items.length); },
   update() {
     if (!this.input) return;
     const q = this.input.value.trim().toLowerCase();
     const all = suggestNames();
     this.items = q ? all.filter(n => n.toLowerCase().includes(q) && n.toLowerCase() !== q) : all;
     this.idx = -1;
+    if (this.dirty) this.active = true;
     if (!this.items.length) { this.hide(); return; }
-    this.el.innerHTML = `<p class="sugg-h">체크한 과목 (직접 입력해도 돼요)</p>` + this.items.map((n, i) => `<button type="button" role="option" data-v="${esc(n)}" data-i="${i}">${esc(n)}</button>`).join("");
+    this.render();
     const r = this.input.getBoundingClientRect();
     this.el.style.left = Math.min(window.innerWidth - 240, Math.max(4, r.left + window.scrollX)) + "px";
     this.el.style.top = (r.bottom + window.scrollY + 2) + "px";
     this.el.hidden = false;
   },
+  render() {
+    const head = this.active ? "↑↓로 고르고 Enter (Esc 취소)" : "Enter로 목록 고르기 · 직접 입력해도 돼요";
+    this.el.innerHTML = `<p class="sugg-h">${head}</p>` + this.items.map((n, i) => `<button type="button" role="option" data-v="${esc(n)}" data-i="${i}"${i === this.idx ? ' class="on" aria-selected="true"' : ""}>${esc(n)}</button>`).join("");
+    this.el.querySelector(".on")?.scrollIntoView({ block: "nearest" });
+  },
+  start() { this.active = true; if (this.idx < 0) this.idx = 0; this.render(); },
   move(d) {
-    if (this.el?.hidden || !this.items.length) return false;
-    this.idx = (this.idx + d + this.items.length) % this.items.length;
-    this.el.querySelectorAll("[data-i]").forEach(b => b.classList.toggle("on", +b.dataset.i === this.idx));
+    if (!this.visible()) return false;
+    if (!this.active) this.active = true;
+    this.idx = this.idx < 0 ? (d > 0 ? 0 : this.items.length - 1) : (this.idx + d + this.items.length) % this.items.length;
+    this.render();
     return true;
   },
   pick(v) {
     const t = this.input; if (!t) return;
-    t.value = v; t.dispatchEvent(new Event("input", { bubbles: true })); this.hide(); t.focus();
+    t.value = v; t.dispatchEvent(new Event("input", { bubbles: true }));
+    this.hide(); this.active = false; this.dirty = false;
+    t.focus(); t.setSelectionRange(t.value.length, t.value.length);
   },
   hide() { if (this.el) this.el.hidden = true; this.idx = -1; }
 };
 document.addEventListener("focusin", e => { if (e.target.matches?.("textarea.cellta")) { Sugg.dirty = false; Sugg.open(e.target); } });
+/* 글자를 입력하면(한글 조합 중 포함) 목록 선택 모드 */
 document.addEventListener("input", e => { if (e.target.matches?.("textarea.cellta")) Sugg.dirty = true; }, true);
 /* 시간표에서 방향키 방향의 옆 칸으로 이동하고, 그 칸의 글자를 전체 선택 */
 function moveCell(t, key) {
@@ -1423,25 +1438,39 @@ function moveCell(t, key) {
   n.scrollIntoView({ block: "nearest", inline: "nearest" });
   return true;
 }
-document.addEventListener("focusout", e => { if (e.target.matches?.("textarea.cellta")) setTimeout(() => { if (document.activeElement !== Sugg.input) Sugg.hide(); }, 100); });
-document.addEventListener("keydown", e => {
-  if (!e.target.matches?.("textarea.cellta")) return;
-  const t = e.target;
-  /* 방향키로 시간표 칸 이동 (엑셀처럼) — 글자를 입력해 추천 목록을 고르는 중이면 ↑↓는 목록 이동 */
-  if (e.key.startsWith("Arrow") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.isComposing) {
-    const listActive = Sugg.dirty && Sugg.el && !Sugg.el.hidden && Sugg.items.length;
-    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && listActive) { if (Sugg.move(e.key === "ArrowDown" ? 1 : -1)) { e.preventDefault(); return; } }
+document.addEventListener("focusout", e => { if (e.target.matches?.("textarea.cellta")) setTimeout(() => { if (document.activeElement !== Sugg.input) { Sugg.hide(); Sugg.active = false; } }, 100); });
+function cellKey(t, key, e) {
+  const plain = !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+  if ((key === "ArrowDown" || key === "ArrowUp") && plain && Sugg.active && Sugg.visible()) { Sugg.move(key === "ArrowDown" ? 1 : -1); return true; }
+  if (key.startsWith("Arrow") && plain) {
     const len = t.value.length, all = t.selectionStart === 0 && t.selectionEnd === len;
     const atStart = t.selectionStart === 0 && t.selectionEnd === 0, atEnd = t.selectionStart === len && t.selectionEnd === len;
-    const go = e.key === "ArrowUp" || e.key === "ArrowDown" || !len || all
-      || (e.key === "ArrowLeft" && atStart) || (e.key === "ArrowRight" && atEnd);
-    if (go && moveCell(t, e.key)) { e.preventDefault(); return; }
+    const go = key === "ArrowUp" || key === "ArrowDown" || !len || all || (key === "ArrowLeft" && atStart) || (key === "ArrowRight" && atEnd);
+    if (go) { Sugg.hide(); Sugg.active = false; moveCell(t, key); return true; }
+    return false;
   }
-  if (e.key === "Escape") Sugg.hide();
-  else if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    if (Sugg.idx >= 0 && !Sugg.el.hidden) Sugg.pick(Sugg.items[Sugg.idx]); else { Sugg.hide(); e.target.blur(); }
+  if (key === "Escape") { if (Sugg.active) { Sugg.active = false; Sugg.idx = -1; if (Sugg.visible()) Sugg.render(); } else Sugg.hide(); return true; }
+  if (key === "Enter" && !e.shiftKey) {
+    if (Sugg.visible() && Sugg.idx >= 0) Sugg.pick(Sugg.items[Sugg.idx]);           /* 고른 과목 넣기 */
+    else if (Sugg.visible() && !Sugg.active) Sugg.start();                          /* 목록 고르기 시작 */
+    else { Sugg.hide(); Sugg.active = false; moveCell(t, "ArrowDown"); }            /* 입력 마치고 아래 칸으로 */
+    return true;
   }
+  return false;
+}
+let imePending = false;
+document.addEventListener("keydown", e => {
+  if (!e.target.matches?.("textarea.cellta") || e.target.readOnly) return;
+  /* 한글 조합 중 누른 키는 keyup에서 처리 (조합 중에는 방향키·Enter가 글자 확정에 쓰임) */
+  if (e.keyCode === 229 || e.key === "Process") { imePending = true; return; }
+  if (e.isComposing && e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Enter") return;
+  imePending = false;
+  if (cellKey(e.target, e.key, e)) e.preventDefault();
+});
+document.addEventListener("keyup", e => {
+  if (!imePending || !e.target.matches?.("textarea.cellta")) return;
+  imePending = false;
+  if (["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(e.key)) cellKey(e.target, e.key, e);
 });
 window.addEventListener("scroll", () => { if (Sugg.el && !Sugg.el.hidden && Sugg.input) { const r = Sugg.input.getBoundingClientRect(); Sugg.el.style.top = (r.bottom + window.scrollY + 2) + "px"; } }, { passive: true });
 
