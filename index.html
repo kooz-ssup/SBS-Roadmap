@@ -742,7 +742,7 @@ const FIREBASE_CONFIG = {
   appId: "1:106910380951:web:1c01a80781179f90668ad2"
 };
 const FB_VER = "10.12.2";
-const APP_VERSION = "2026-11-10 · 시간합치기 v4";
+const APP_VERSION = "2026-11-19 · 방향키 이동 v5";
 
 /* ================= 저장소 (Firebase, 설정 전에는 이 브라우저) ================= */
 const DEL = Object.freeze({ __del: true });
@@ -1407,13 +1407,37 @@ const Sugg = {
   },
   hide() { if (this.el) this.el.hidden = true; this.idx = -1; }
 };
-document.addEventListener("focusin", e => { if (e.target.matches?.("textarea.cellta")) Sugg.open(e.target); });
+document.addEventListener("focusin", e => { if (e.target.matches?.("textarea.cellta")) { Sugg.dirty = false; Sugg.open(e.target); } });
+document.addEventListener("input", e => { if (e.target.matches?.("textarea.cellta")) Sugg.dirty = true; }, true);
+/* 시간표에서 방향키 방향의 옆 칸으로 이동하고, 그 칸의 글자를 전체 선택 */
+function moveCell(t, key) {
+  const grid = [...document.querySelectorAll("table.tt tbody tr")].map(tr => [...tr.querySelectorAll("textarea.cellta")]).filter(r => r.length);
+  let r = -1, c = -1;
+  grid.some((row, i) => { const j = row.indexOf(t); if (j >= 0) { r = i; c = j; return true; } return false; });
+  if (r < 0) return false;
+  if (key === "ArrowUp") r--; else if (key === "ArrowDown") r++; else if (key === "ArrowLeft") c--; else c++;
+  if (r < 0 || r >= grid.length || c < 0 || c >= grid[r].length) return true; /* 표 끝: 그 자리에 머묾 */
+  const n = grid[r][c];
+  n.focus();
+  n.select();
+  n.scrollIntoView({ block: "nearest", inline: "nearest" });
+  return true;
+}
 document.addEventListener("focusout", e => { if (e.target.matches?.("textarea.cellta")) setTimeout(() => { if (document.activeElement !== Sugg.input) Sugg.hide(); }, 100); });
 document.addEventListener("keydown", e => {
   if (!e.target.matches?.("textarea.cellta")) return;
-  if (e.key === "ArrowDown" && Sugg.move(1)) e.preventDefault();
-  else if (e.key === "ArrowUp" && Sugg.move(-1)) e.preventDefault();
-  else if (e.key === "Escape") Sugg.hide();
+  const t = e.target;
+  /* 방향키로 시간표 칸 이동 (엑셀처럼) — 글자를 입력해 추천 목록을 고르는 중이면 ↑↓는 목록 이동 */
+  if (e.key.startsWith("Arrow") && !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.isComposing) {
+    const listActive = Sugg.dirty && Sugg.el && !Sugg.el.hidden && Sugg.items.length;
+    if ((e.key === "ArrowDown" || e.key === "ArrowUp") && listActive) { if (Sugg.move(e.key === "ArrowDown" ? 1 : -1)) { e.preventDefault(); return; } }
+    const len = t.value.length, all = t.selectionStart === 0 && t.selectionEnd === len;
+    const atStart = t.selectionStart === 0 && t.selectionEnd === 0, atEnd = t.selectionStart === len && t.selectionEnd === len;
+    const go = e.key === "ArrowUp" || e.key === "ArrowDown" || !len || all
+      || (e.key === "ArrowLeft" && atStart) || (e.key === "ArrowRight" && atEnd);
+    if (go && moveCell(t, e.key)) { e.preventDefault(); return; }
+  }
+  if (e.key === "Escape") Sugg.hide();
   else if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
     if (Sugg.idx >= 0 && !Sugg.el.hidden) Sugg.pick(Sugg.items[Sugg.idx]); else { Sugg.hide(); e.target.blur(); }
